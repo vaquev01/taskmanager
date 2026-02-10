@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator client_backend {
+  provider = "prisma-client-js"
+  output   = "../Backend/node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TaskStatus {
+  PENDENTE
+  EM_PROGRESSO
+  CONCLUIDA
+}
+
+enum TaskPriority {
+  BAIXA
+  MEDIA
+  ALTA
+}
+
+model User {
+  id                String   @id @default(uuid())
+  nome              String
+  telefone_whatsapp String   @unique
+  email             String?  @unique
+  avatar            String?
+  timezone          String   @default("America/Sao_Paulo")
+  dailySummaryTime  String?  // Format "HH:mm" (24h)
+  created_at        DateTime @default(now())
+
+  // Relations
+  teamsAsMember     TeamMember[]
+  teamsAsAdmin      Team[]
+  projectsCreated   Project[]
+  tasksCreated      Task[]        @relation("TaskCreator")
+  tasksResponsible  Task[]        @relation("TaskResponsible")
+  comments          Comment[]
+  reminders         Reminder[]
+}
+
+model Team {
+  id         String   @id @default(uuid())
+  nome       String
+  admin_id   String
+  created_at DateTime @default(now())
+
+  // Relations
+  admin      User         @relation(fields: [admin_id], references: [id])
+  members    TeamMember[]
+  projects   Project[]
+}
+
+model TeamMember {
+  team_id    String
+  user_id    String
+  joined_at  DateTime @default(now())
+
+  team       Team @relation(fields: [team_id], references: [id])
+  user       User @relation(fields: [user_id], references: [id])
+
+  @@id([team_id, user_id])
+}
+
+model Project {
+  id         String   @id @default(uuid())
+  nome       String
+  team_id    String
+  cor        String?
+  created_at DateTime @default(now())
+
+  // Relations
+  team       Team     @relation(fields: [team_id], references: [id])
+  creator_id String?
+  creator    User?    @relation(fields: [creator_id], references: [id])
+  tasks      Task[]
+}
+
+model Task {
+  id             String       @id @default(uuid())
+  titulo         String
+  descricao      String?
+  status         TaskStatus   @default(PENDENTE)
+  prioridade     TaskPriority @default(MEDIA)
+  prazo          DateTime?
+  criador_id     String
+  responsavel_id String?
+  project_id     String?
+  
+  grupo          String?  // Ex: "Agencia Bravvo", "Grupo Tada"
+  subgrupo       String?  // Ex: "Mkt", "Liderança"
+  
+  isRecurring        Boolean   @default(false)
+  recurrenceInterval String?   // 'daily', 'weekly', 'monthly'
+  reminderSent       Boolean   @default(false)
+  
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+  completed_at   DateTime?
+
+  // Relations
+  criador        User         @relation("TaskCreator", fields: [criador_id], references: [id])
+  responsavel    User?        @relation("TaskResponsible", fields: [responsavel_id], references: [id])
+  project        Project?     @relation(fields: [project_id], references: [id])
+  
+  subtasks       Subtask[]
+  comments       Comment[]
+  reminders      Reminder[]
+}
+
+model Subtask {
+  id         String  @id @default(uuid())
+  task_id    String
+  texto      String
+  concluida  Boolean @default(false)
+
+  task       Task    @relation(fields: [task_id], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id         String   @id @default(uuid())
+  task_id    String
+  user_id    String
+  texto      String
+  created_at DateTime @default(now())
+
+  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id])
+}
+
+model Reminder {
+  id         String   @id @default(uuid())
+  task_id    String
+  user_id    String
+  horario    DateTime
+  enviado    Boolean  @default(false)
+
+  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id])
+}
