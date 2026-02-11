@@ -37,7 +37,7 @@ export class WhatsappService {
             webVersionCache: WEB_VERSION_CACHE,
             puppeteer: {
                 headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
             }
         });
 
@@ -57,7 +57,7 @@ export class WhatsappService {
             webVersionCache: WEB_VERSION_CACHE,
             puppeteer: {
                 headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
             }
         });
         this.initializeEvents();
@@ -90,14 +90,50 @@ export class WhatsappService {
             this.isReady = false;
         });
 
+        this.client.on('auth_failure', () => {
+            console.log('❌ WhatsApp Auth Failed — clearing session...');
+            this.isReady = false;
+            this.qrCode = null;
+            const authPath = path.join(__dirname, '..', '.wwebjs_auth');
+            if (fs.existsSync(authPath)) {
+                fs.rmSync(authPath, { recursive: true, force: true });
+            }
+        });
+
         this.client.on('message', async (msg) => {
             await this.handleIncomingMessage(msg);
         });
     }
 
-    public initialize() {
+    public async initialize() {
         console.log('🔄 Initializing WhatsApp Client...');
-        this.client.initialize();
+        try {
+            await this.client.initialize();
+        } catch (error) {
+            console.error('❌ WhatsApp initialization failed:', (error as Error).message);
+            console.log('🔄 Clearing corrupted session and retrying in 10s...');
+            // Clear corrupted auth
+            const authPath = path.join(__dirname, '..', '.wwebjs_auth');
+            if (fs.existsSync(authPath)) {
+                fs.rmSync(authPath, { recursive: true, force: true });
+                console.log('🗑️ Cleared corrupted auth session');
+            }
+            // Retry after delay
+            setTimeout(() => {
+                this.client = new Client({
+                    authStrategy: new LocalAuth(),
+                    webVersionCache: WEB_VERSION_CACHE,
+                    puppeteer: {
+                        headless: true,
+                        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+                    }
+                });
+                this.initializeEvents();
+                this.client.initialize().catch((e) => {
+                    console.error('❌ WhatsApp retry failed:', (e as Error).message);
+                });
+            }, 10000);
+        }
     }
 
     public async sendMessage(to: string, message: string) {
