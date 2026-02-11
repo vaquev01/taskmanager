@@ -3,9 +3,10 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/api';
 import { useToastStore } from '../store/useToastStore';
 import { X, Calendar, Flag, FolderOpen, UserCircle, Loader2, CheckCircle2, MessageSquare, Trash2, Plus, ChevronDown } from 'lucide-react';
+import type { Task } from '../types';
 
 interface TaskDetailModalProps {
-    task: any;
+    task: Task | null;
     isOpen: boolean;
     onClose: () => void;
 }
@@ -27,7 +28,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
         subtasks: [] as { texto: string, concluida: boolean }[],
     });
 
-    const { data: projects } = useQuery({
+    const { data: _projects } = useQuery({
         queryKey: ['projects'],
         queryFn: () => api.get('/projects').then(r => r.data),
         enabled: isOpen,
@@ -57,7 +58,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
     }, [task]);
 
     const updateMutation = useMutation({
-        mutationFn: (data: any) => api.put(`/tasks/${task.id}`, data),
+        mutationFn: (data: Record<string, unknown>) => api.put(`/tasks/${task?.id}`, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['tasks'] });
             addToast('Tarefa atualizada com sucesso!', 'success');
@@ -67,7 +68,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
     });
 
     const deleteMutation = useMutation({
-        mutationFn: () => api.delete(`/tasks/${task.id}`),
+        mutationFn: () => api.delete(`/tasks/${task?.id}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['tasks'] });
             addToast('Tarefa excluída com sucesso.', 'success');
@@ -323,13 +324,13 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
                     </div>
 
                     {/* Comments */}
-                    {task.comments?.length > 0 && (
+                    {(task?.comments?.length ?? 0) > 0 && (
                         <div>
                             <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                                <MessageSquare size={12} /> Comentários ({task.comments.length})
+                                <MessageSquare size={12} /> Comentários ({task?.comments?.length ?? 0})
                             </label>
                             <div className="flex flex-col gap-2">
-                                {task.comments.map((c: any) => (
+                                {(task?.comments ?? []).map((c: { id: string; texto: string; user?: { nome: string }; created_at: string }) => (
                                     <div key={c.id} className="p-3 rounded-xl bg-[var(--glass-surface)] border border-[var(--glass-border)]">
                                         <div className="flex items-center gap-2 mb-1">
                                             <span className="text-xs font-semibold text-violet-400">{c.user?.nome || 'Anônimo'}</span>

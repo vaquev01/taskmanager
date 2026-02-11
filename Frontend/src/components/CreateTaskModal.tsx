@@ -27,7 +27,7 @@ export const CreateTaskModal = ({ isOpen, onClose }: CreateTaskModalProps) => {
         subgrupo: '',
     });
 
-    const { data: projects } = useQuery({
+    const { data: _projects } = useQuery({
         queryKey: ['projects'],
         queryFn: () => api.get('/projects').then(r => r.data),
         enabled: isOpen,

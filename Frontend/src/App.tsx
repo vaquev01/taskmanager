@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { ToastContainer } from './components/Toast';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Dashboard } from './pages/Dashboard';
 import { LoginPage } from './pages/LoginPage';
 import { CalendarPage } from './pages/CalendarPage';
@@ -29,7 +30,7 @@ function App() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
   return (
-    <>
+    <ErrorBoundary>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={
@@ -37,15 +38,15 @@ function App() {
             <Layout />
           </ProtectedRoute>
         }>
-          <Route index element={<Dashboard />} />
-          <Route path="calendar" element={<CalendarPage />} />
-          <Route path="team" element={<TeamPage />} />
-          <Route path="settings" element={<SettingsPage />} />
+          <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+          <Route path="calendar" element={<ErrorBoundary><CalendarPage /></ErrorBoundary>} />
+          <Route path="team" element={<ErrorBoundary><TeamPage /></ErrorBoundary>} />
+          <Route path="settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ToastContainer />
-    </>
+    </ErrorBoundary>
   );
 }
 

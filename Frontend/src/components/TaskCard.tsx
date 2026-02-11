@@ -1,23 +1,7 @@
 import { Calendar, User, CheckCircle2, Trash2, ArrowUpRight, Repeat, GripVertical, Clock, Tag, AlertTriangle } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-
-interface Task {
-    id: string;
-    titulo: string;
-    prazo: string | null;
-    status: 'PENDENTE' | 'EM_PROGRESSO' | 'CONCLUIDA';
-    prioridade: 'BAIXA' | 'MEDIA' | 'ALTA';
-    project?: { nome: string; cor: string } | null;
-    responsavel?: { nome: string } | null;
-    criador?: { nome: string } | null;
-    responsavel_id?: string;
-    criador_id?: string;
-    isRecurring?: boolean;
-    recurrenceInterval?: string;
-    grupo?: string | null;
-    subgrupo?: string | null;
-}
+import type { Task } from '../types';
 
 interface TaskCardProps {
     task: Task;
