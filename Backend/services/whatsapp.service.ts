@@ -1,4 +1,4 @@
-import { Client, LocalAuth, Message, Buttons } from 'whatsapp-web.js';
+import { Client, LocalAuth, Message, Poll } from 'whatsapp-web.js';
 // @ts-ignore
 import qrcode from 'qrcode-terminal';
 import { TaskService } from './task.service';
@@ -85,9 +85,14 @@ export class WhatsappService {
             this.qrCode = null;
         });
 
-        this.client.on('disconnected', () => {
-            console.log('❌ WhatsApp Client Disconnected');
+        this.client.on('disconnected', (reason) => {
+            console.log('❌ WhatsApp Client Disconnected:', reason);
             this.isReady = false;
+            // Auto-reconnect
+            console.log('🔄 Attempting to reconnect in 5s...');
+            setTimeout(() => {
+                this.client.initialize();
+            }, 5000);
         });
 
         this.client.on('auth_failure', () => {
@@ -102,6 +107,10 @@ export class WhatsappService {
 
         this.client.on('message', async (msg) => {
             await this.handleIncomingMessage(msg);
+        });
+
+        this.client.on('vote_update', async (vote) => {
+            await this.handlePollVote(vote);
         });
     }
 
@@ -145,6 +154,78 @@ export class WhatsappService {
         }
     }
 
+    private async handlePollVote(vote: any) {
+        // vote.selectedOptions is array of { name: 'Option' }
+        // vote.voter is user ID (phone@c.us)
+        // vote.parentMessage is the poll message
+        const selected = vote.selectedOptions[0]?.name;
+        if (!selected) return;
+
+        const voterId = vote.voter;
+        const contact = await this.client.getContactById(voterId);
+        const phoneNumber = contact.number;
+
+        console.log(`🗳️ Vote from ${phoneNumber}: ${selected}`);
+
+        // Get User
+        const user = await prisma.user.findUnique({
+            where: { telefone_whatsapp: phoneNumber }
+        });
+
+        if (!user) return; // Should not happen if they are voting
+
+        // Simulate Message Handling based on Vote
+        // We'll create a fake "Message" object or just call the logic directly
+        // But logic is inside handleIncomingMessage/processSmartMessage which expects a Message object to reply to.
+        // We don't have a 'msg' object to reply to easily (we can reply to vote.parentMessage?)
+
+        // We can create a "Fake" message object that mimics the interface needed
+        // Or refactor logic. 
+        // Let's refactor logic minimally: create a helper to send text to user.
+
+        const reply = async (text: string) => {
+            await this.client.sendMessage(voterId, text);
+        };
+
+        const lower = selected.toLowerCase();
+
+        if (lower.includes('hoje')) {
+            const tasks = await this.taskService.getTasksForToday(user.id);
+            if (tasks.length === 0) return reply('✨ Tudo limpo por hoje!');
+            return reply('📅 *Hoje:*\n' + tasks.map((t: any) => `▫️ ${t.titulo}`).join('\n'));
+        }
+
+        if (lower.includes('pendentes') || lower.includes('lista')) {
+            const tasks = await this.taskService.listUserTasks(user.id);
+            if (tasks.length === 0) return reply('✅ Nenhuma tarefa pendente.');
+            return reply('📋 *Pendentes:*\n' + tasks.map((t: any) => `▫️ ${t.titulo} (${t.prazo ? new Date(t.prazo).toLocaleDateString() : 'Sem data'})`).join('\n'));
+        }
+
+        if (lower.includes('equipe')) {
+            const users = await prisma.user.findMany({ orderBy: { nome: 'asc' } });
+            const list = users.map((u, i) => `${i + 1}. *${u.nome}*\n   📞 ${u.telefone_whatsapp}`).join('\n\n');
+            return reply(`👥 *Equipe (${users.length})*\n\n${list}`);
+        }
+
+        if (lower.includes('criar')) {
+            return reply('📝 Para criar uma tarefa, apenas escreva ou mande áudio.\nEx: *"Ligar para cliente amanhã às 14h"*');
+        }
+    }
+
+    private async sendMainMenu(msg: Message) {
+        const poll = new Poll('🤖 *Menu TaskFlow*', [
+            '📅 Minhas Tarefas de Hoje',
+            '📋 Ver Todas Pendentes',
+            '📝 + Criar Nova Tarefa',
+            '👥 Equipe'
+        ], {
+            allowMultipleAnswers: false,
+            messageSecret: Array.from({ length: 32 }, () => Math.floor(Math.random() * 256))
+        });
+
+        await msg.reply(poll);
+    }
+
     private async handleIncomingMessage(msg: Message) {
         const contact = await msg.getContact();
         const phoneNumber = contact.number;
@@ -159,14 +240,22 @@ export class WhatsappService {
 
         if (!user) {
             // Auto-register logic (Simplified for Smart Bot)
-            if (text.toLowerCase().includes('start') || text.toLowerCase().includes('oi')) {
+            if (text.toLowerCase().includes('start') || text.toLowerCase().includes('oi') || text.toLowerCase().includes('olá')) {
                 const name = contact.pushname || 'Novo Usuário';
                 user = await prisma.user.create({
                     data: { nome: name, telefone_whatsapp: phoneNumber }
                 });
-                await msg.reply(`👋 Olá ${name}! Eu sou seu Assistente de Tarefas.\n\nPode me mandar áudios ou textos dizendo o que precisa fazer. Lembre-se de sempre dizer *quando* é para fazer!`);
+                await msg.reply(`👋 Olá ${name}! Eu sou seu Assistente de Tarefas.`);
+                await this.sendMainMenu(msg);
+                return;
             } else {
-                await msg.reply('👋 Olá! Mande um "Oi" para começarmos.');
+                // Try to force start if they say anything else
+                const name = contact.pushname || 'Novo Usuário';
+                user = await prisma.user.create({
+                    data: { nome: name, telefone_whatsapp: phoneNumber }
+                });
+                await msg.reply(`👋 Bem-vindo ao TaskFlow!`);
+                await this.sendMainMenu(msg);
                 return;
             }
         }
@@ -220,16 +309,20 @@ export class WhatsappService {
         }
     }
 
-    private conversationHistory: Map<string, Array<{ role: 'user' | 'assistant' | 'system', content: string }>> = new Map();
+    // Removed in-memory conversationHistory Map
 
-    private updateHistory(userId: string, role: 'user' | 'assistant', content: string) {
-        if (!this.conversationHistory.has(userId)) {
-            this.conversationHistory.set(userId, []);
+    private async updateHistory(userId: string, role: 'user' | 'assistant', content: string) {
+        try {
+            await prisma.chatHistory.create({
+                data: {
+                    user_id: userId,
+                    role: role,
+                    content: content
+                }
+            });
+        } catch (e) {
+            console.error('Failed to save chat history:', e);
         }
-        const history = this.conversationHistory.get(userId)!;
-        history.push({ role, content });
-        // Keep last 10 messages
-        if (history.length > 10) history.shift();
     }
 
     private async processSmartMessage(msg: Message, user: any, text: string) {
@@ -237,16 +330,11 @@ export class WhatsappService {
         const lower = text.toLowerCase();
 
         // Update History with User Message
-        this.updateHistory(user.id, 'user', text);
+        await this.updateHistory(user.id, 'user', text);
 
-        if (lower === 'ajuda' || lower === 'menu') {
-            const menu = `🤖 *Menu Inteligente*\n\n` +
-                `📅 *Tarefas de Hoje* (Digite "hoje")\n` +
-                `📋 *Minhas Tarefas* (Digite "lista")\n` +
-                `👥 *Equipe* (Digite "equipe")\n\n` +
-                `💡 Para criar, apenas diga: *"Reunião amanhã às 10h"* ou mande um áudio!`;
-            await msg.reply(menu);
-            this.updateHistory(user.id, 'assistant', menu);
+        if (lower === 'ajuda' || lower === 'menu' || lower === 'botões' || lower === 'botoes') {
+            await this.sendMainMenu(msg);
+            await this.updateHistory(user.id, 'assistant', '[Enviou Menu de Botões]');
             return;
         }
 
@@ -278,7 +366,15 @@ export class WhatsappService {
 
         // AI Intent Analysis
         try {
-            const history = this.conversationHistory.get(user.id) || [];
+            // Get History from DB
+            const dbHistory = await prisma.chatHistory.findMany({
+                where: { user_id: user.id },
+                orderBy: { created_at: 'desc' },
+                take: 30
+            });
+
+            // Reverse to chronological order
+            const history = dbHistory.reverse().map(h => ({ role: h.role as 'user' | 'assistant', content: h.content }));
 
             const systemPrompt = `Você é um assistente pessoal de produtividade (SmartBot).
                         
@@ -288,100 +384,114 @@ export class WhatsappService {
                         - Dia da semana atual: ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', timeZone: user.timezone })}
 
                         SUA MISSÃO:
-                        Analise o HISTÓRICO DE CONVERSA e a última mensagem para decidir se deve criar uma NOVA TAREFA, COMPLETAR UMA TAREFA PENDENTE ou APENAS CONVERSAR.
+                        Analise o HISTÓRICO DE CONVERSA e a última mensagem para identificar UMA OU MAIS tarefas.
                         
                         REGRAS DE INTERPRETAÇÃO:
-                        1. **Contexto**: Use o histórico! Se o bot perguntou "Quando?", e o usuário respondeu "Amanhã", junte com a mensagem anterior ("Fazer relatório") para criar a tarefa.
-                        2. Se for apenas saudação ("Oi", "Olá", "Bom dia") ou agradecimento, retorne "is_task": false e uma "reply_message" amigável.
-                        3. Se for uma intenção de tarefa, extraia os dados.
-                        4. DATAS: Retorne a data SEMPRE no formato ISO com o Offset do fuso horário (ex: "2023-10-25T18:00:00-03:00"). NÃO use UTC (Z).
-                            - "Amanhã" = Data de hoje + 1 dia, mantendo o fuso.
-                            - "18h" = 18:00 no fuso ${user.timezone}.
-                        5. Lembretes: "Me lembre 10 min antes" -> reminder_offset_minutes: 10.
+                        1. **Contexto**: Use o histórico!
+                        2. **Múltiplas Tarefas**: Se o usuário disser "Fazer X e Y", crie DUAS tarefas separadas.
+                        3. **Datas**:
+                             - Se a data for explícita para cada ("X amanhã, Y sexta"), use-as.
+                             - Se a data for global ("X e Y amanhã"), aplique a ambas.
+                             - Retorne datas em ISO com Offset (ex: "2023-10-25T18:00:00-03:00").
+                        4. Se for apenas conversa (sem intenção de tarefa), retorne lista vazia em "tasks".
 
                         SAÍDA JSON OBRIGATÓRIA:
                         { 
-                            "is_task": boolean,
-                            "reply_message": string | null, (Use apenas se is_task=false OU se faltar dados como a data, para perguntar ao usuário)
-                            "title": string | null, 
-                            "priority": "ALTA"|"MEDIA"|"BAIXA", 
-                            "date": string (ISO8601 com Offset) or null, 
-                            "date_missing": boolean, 
-                            "category": "TRABALHO"|"PESSOAL"|"ESTUDO"|"SAUDE",
-                            "is_recurring": boolean,
-                            "recurrence": "daily"|"weekly"|"monthly"|null,
-                            "reminder_offset_minutes": number | null
+                            "tasks": [
+                                {
+                                    "title": string, 
+                                    "priority": "ALTA"|"MEDIA"|"BAIXA", 
+                                    "date": string (ISO8601 com Offset) or null, 
+                                    "date_missing": boolean, 
+                                    "category": "TRABALHO"|"PESSOAL"|"ESTUDO"|"SAUDE",
+                                    "is_recurring": boolean,
+                                    "recurrence": "daily"|"weekly"|"monthly"|null,
+                                    "reminder_offset_minutes": number | null
+                                }
+                            ],
+                            "reply_message": string | null (Use se não houver tarefas ou se precisar perguntar algo)
                         }
                         
                         IMPORTANTE:
-                        - Se a tarefa estiver incompleta (ex: falta data), retorne "is_task": false e pergunte a data em "reply_message".
-                        - Se o histórico mostrar que o usuário acabou de fornecer a data que faltava, retorne "is_task": true com todos os dados unidos.
+                        - Se detectar tarefas, mas faltar data em alguma, marque "date_missing": true nela.
                         `;
 
             const completion = await openai.chat.completions.create({
                 model: 'gpt-4o-mini',
                 messages: [
                     { role: 'system', content: systemPrompt },
-                    ...history.map(h => ({ role: h.role as 'user' | 'assistant', content: h.content }))
+                    ...history // History is already formatted correctly
                 ],
                 response_format: { type: 'json_object' }
             });
 
             const result = JSON.parse(completion.choices[0].message.content || '{}');
+            const tasks = result.tasks || [];
 
             // 1. Not a task (Greeting/Chat/Clarification)
-            if (!result.is_task) {
+            if (tasks.length === 0) {
                 if (result.reply_message) {
                     await msg.reply(result.reply_message);
-                    this.updateHistory(user.id, 'assistant', result.reply_message);
+                    await this.sendMainMenu(msg);
+                    await this.updateHistory(user.id, 'assistant', result.reply_message);
                 } else {
-                    const fallback = '👋 Olá! Estou pronto para ajudar. Diga algo como "Reunião amanhã às 10h".';
-                    await msg.reply(fallback);
-                    this.updateHistory(user.id, 'assistant', fallback);
+                    await this.sendMainMenu(msg);
+                    await this.updateHistory(user.id, 'assistant', 'Enviou menu');
                 }
                 return;
             }
 
-            // 2. Task but missing date (Should be handled by is_task=false + reply_message in prompt, but safety check)
-            if (result.date_missing) {
-                const question = '📅 *Faltou a data!* Quando devo agendar isso?';
-                await msg.reply(question);
-                this.updateHistory(user.id, 'assistant', question);
-                return;
-            }
+            // 2. Process Each Task
+            let responseText = '';
+            let hasMissingDate = false;
 
-            // 3. Create Task
-            const newTask = await this.taskService.createTask({
-                titulo: result.title || 'Nova Tarefa',
-                descricao: `Categoria: ${result.category || 'Geral'}.`,
-                criador_id: user.id,
-                responsavel_id: user.id,
-                prazo: result.date ? new Date(result.date) : undefined, // Date constructor handles ISO with offset correctly
-                prioridade: result.priority || TaskPriority.MEDIA,
-                isRecurring: result.is_recurring,
-                recurrenceInterval: result.recurrence
-            });
+            for (const t of tasks) {
+                if (t.date_missing) {
+                    hasMissingDate = true;
+                    responseText += `⚠️ *${t.title || 'Tarefa'}*: Faltou a data.\n`;
+                    continue;
+                }
 
-            // Create Reminder
-            let reminderMsg = '';
-            if (result.reminder_offset_minutes && newTask.prazo) {
-                const reminderTime = new Date(newTask.prazo.getTime() - (result.reminder_offset_minutes * 60000));
-                await prisma.reminder.create({
-                    data: {
-                        task_id: newTask.id,
-                        user_id: user.id,
-                        horario: reminderTime,
-                        enviado: false
-                    }
+                const newTask = await this.taskService.createTask({
+                    titulo: t.title || 'Nova Tarefa',
+                    descricao: `Categoria: ${t.category || 'Geral'}.`,
+                    criador_id: user.id,
+                    responsavel_id: user.id,
+                    prazo: t.date ? new Date(t.date) : undefined,
+                    prioridade: t.priority || TaskPriority.MEDIA,
+                    isRecurring: t.is_recurring,
+                    recurrenceInterval: t.recurrence
                 });
-                reminderMsg = `\n⏰ Lembrete: ${result.reminder_offset_minutes}min antes`;
+
+                // Create Reminder
+                let reminderMsg = '';
+                if (t.reminder_offset_minutes && newTask.prazo) {
+                    const reminderTime = new Date(newTask.prazo.getTime() - (t.reminder_offset_minutes * 60000));
+                    await prisma.reminder.create({
+                        data: {
+                            task_id: newTask.id,
+                            user_id: user.id,
+                            horario: reminderTime,
+                            enviado: false
+                        }
+                    });
+                    reminderMsg = ` (⏰ ${t.reminder_offset_minutes}min)`;
+                }
+
+                const dateStr = newTask.prazo ? new Date(newTask.prazo).toLocaleString('pt-BR', { timeZone: user.timezone, dateStyle: 'short', timeStyle: 'short' }) : 'Sem data';
+                responseText += `✅ *${newTask.titulo}*\n📅 ${dateStr}${reminderMsg}\n\n`;
             }
 
-            const dateStr = newTask.prazo ? new Date(newTask.prazo).toLocaleString('pt-BR', { timeZone: user.timezone, dateStyle: 'short', timeStyle: 'short' }) : 'Sem data';
-            const successMsg = `✅ *Tarefa Agendada!*\n\n📝 ${newTask.titulo}\n📅 ${dateStr}\n🏷️ ${result.category || 'Geral'}${reminderMsg}`;
+            if (responseText) {
+                await msg.reply(responseText.trim());
+                await this.updateHistory(user.id, 'assistant', responseText);
+            }
 
-            await msg.reply(successMsg);
-            this.updateHistory(user.id, 'assistant', successMsg);
+            if (hasMissingDate) {
+                const ask = '📅 Algumas tarefas ficaram sem data. Quando devo agendá-las?';
+                await msg.reply(ask);
+                await this.updateHistory(user.id, 'assistant', ask);
+            }
 
         } catch (error) {
             console.error('AI Processing Error:', error);
@@ -390,61 +500,62 @@ export class WhatsappService {
     }
 
     private async listTeam(msg: Message) {
-    const users = await prisma.user.findMany({ orderBy: { nome: 'asc' } });
-    const list = users.map((u, i) => `${i + 1}. *${u.nome}*\n   📞 ${u.telefone_whatsapp}`).join('\n\n');
+        const users = await prisma.user.findMany({ orderBy: { nome: 'asc' } });
+        const list = users.map((u, i) => `${i + 1}. *${u.nome}*\n   📞 ${u.telefone_whatsapp}`).join('\n\n');
 
-    await msg.reply(`👥 *Equipe (${users.length})*\n\n${list}\n\n👇 *Comandos de Gestão:*\n- "add membro [Nome], [11999999999]"\n- "rm membro [Nome ou Tel]"`);
-}
+        await msg.reply(`👥 *Equipe (${users.length})*\n\n${list}\n\n👇 *Comandos de Gestão:*\n- "add membro [Nome], [11999999999]"\n- "rm membro [Nome ou Tel]"`);
+    }
 
     private async addMember(msg: Message, text: string) {
-    const content = text.replace(/^(add|novo) membro\s+/i, '').trim();
-    const parts = content.split(',').map(p => p.trim());
+        const content = text.replace(/^(add|novo) membro\s+/i, '').trim();
+        const parts = content.split(',').map(p => p.trim());
 
-    if (parts.length < 2) {
-        return msg.reply('❌ Formato inválido.\nUse: *add membro Nome, 5511999999999*');
+        if (parts.length < 2) {
+            return msg.reply('❌ Formato inválido.\nUse: *add membro Nome, 5511999999999*');
+        }
+
+        const phone = parts.pop()!;
+        const name = parts.join(',');
+        const cleanPhone = phone.replace(/\D/g, '');
+
+        if (cleanPhone.length < 10) {
+            return msg.reply('❌ Telefone inválido. Inclua DDD e código do país (ex: 5511...)');
+        }
+
+        try {
+            await prisma.user.create({
+                data: {
+                    nome: name,
+                    telefone_whatsapp: cleanPhone
+                }
+            });
+            await msg.reply(`✅ Membro *${name}* adicionado à equipe!`);
+        } catch (e) {
+            await msg.reply('❌ Erro: Telefone já cadastrado ou inválido.');
+        }
     }
-
-    const phone = parts.pop()!;
-    const name = parts.join(',');
-    const cleanPhone = phone.replace(/\D/g, '');
-
-    if (cleanPhone.length < 10) {
-        return msg.reply('❌ Telefone inválido. Inclua DDD e código do país (ex: 5511...)');
-    }
-
-    try {
-        await prisma.user.create({
-            data: {
-                nome: name,
-                telefone_whatsapp: cleanPhone
-            }
-        });
-        await msg.reply(`✅ Membro *${name}* adicionado à equipe!`);
-    } catch (e) {
-        await msg.reply('❌ Erro: Telefone já cadastrado ou inválido.');
-    }
-}
 
     private async removeMember(msg: Message, text: string) {
-    const term = text.replace(/^(rm|remover) membro\s+/i, '').trim();
+        const term = text.replace(/^(rm|remover) membro\s+/i, '').trim();
 
-    const user = await prisma.user.findFirst({
-        where: {
-            OR: [
-                { telefone_whatsapp: { contains: term } },
-                { nome: { contains: term, mode: 'insensitive' } }
-            ]
+        const user = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { telefone_whatsapp: { contains: term } },
+                    { nome: { contains: term, mode: 'insensitive' } }
+                ]
+            }
+        });
+
+        if (!user) return msg.reply('❌ Usuário não encontrado.');
+
+        try {
+            await prisma.user.delete({ where: { id: user.id } });
+            await msg.reply(`🗑️ Membro *${user.nome}* removido.`);
+        } catch (e) {
+            await msg.reply('❌ Não foi possível remover. O usuário pode ter tarefas vinculadas.');
         }
-    });
-
-    if (!user) return msg.reply('❌ Usuário não encontrado.');
-
-    try {
-        await prisma.user.delete({ where: { id: user.id } });
-        await msg.reply(`🗑️ Membro *${user.nome}* removido.`);
-    } catch (e) {
-        await msg.reply('❌ Não foi possível remover. O usuário pode ter tarefas vinculadas.');
     }
 }
-}
+
 
