@@ -45,7 +45,10 @@ export interface Project {
 export interface User {
     id: string;
     nome: string;
-    whatsapp: string;
+    telefone_whatsapp: string;
+    whatsapp?: string; // Legacy support if needed
+    email?: string;
+    avatar?: string;
     timezone?: string;
     dailySummaryTime?: string;
 }

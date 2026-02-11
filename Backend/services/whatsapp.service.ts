@@ -242,10 +242,25 @@ export class WhatsappService {
         if (lower === 'ajuda' || lower === 'menu') {
             const menu = `🤖 *Menu Inteligente*\n\n` +
                 `📅 *Tarefas de Hoje* (Digite "hoje")\n` +
-                `📋 *Minhas Tarefas* (Digite "lista")\n\n` +
+                `📋 *Minhas Tarefas* (Digite "lista")\n` +
+                `👥 *Equipe* (Digite "equipe")\n\n` +
                 `💡 Para criar, apenas diga: *"Reunião amanhã às 10h"* ou mande um áudio!`;
             await msg.reply(menu);
             this.updateHistory(user.id, 'assistant', menu);
+            return;
+        }
+
+        // Team Management
+        if (lower === 'equipe' || lower === 'time') {
+            await this.listTeam(msg);
+            return;
+        }
+        if (lower.startsWith('add membro') || lower.startsWith('novo membro')) {
+            await this.addMember(msg, text);
+            return;
+        }
+        if (lower.startsWith('rm membro') || lower.startsWith('remover membro')) {
+            await this.removeMember(msg, text);
             return;
         }
 
@@ -373,5 +388,63 @@ export class WhatsappService {
             await msg.reply('😵 Tive um problema ao processar isso. Tente novamente mais tarde.');
         }
     }
+
+    private async listTeam(msg: Message) {
+    const users = await prisma.user.findMany({ orderBy: { nome: 'asc' } });
+    const list = users.map((u, i) => `${i + 1}. *${u.nome}*\n   📞 ${u.telefone_whatsapp}`).join('\n\n');
+
+    await msg.reply(`👥 *Equipe (${users.length})*\n\n${list}\n\n👇 *Comandos de Gestão:*\n- "add membro [Nome], [11999999999]"\n- "rm membro [Nome ou Tel]"`);
+}
+
+    private async addMember(msg: Message, text: string) {
+    const content = text.replace(/^(add|novo) membro\s+/i, '').trim();
+    const parts = content.split(',').map(p => p.trim());
+
+    if (parts.length < 2) {
+        return msg.reply('❌ Formato inválido.\nUse: *add membro Nome, 5511999999999*');
+    }
+
+    const phone = parts.pop()!;
+    const name = parts.join(',');
+    const cleanPhone = phone.replace(/\D/g, '');
+
+    if (cleanPhone.length < 10) {
+        return msg.reply('❌ Telefone inválido. Inclua DDD e código do país (ex: 5511...)');
+    }
+
+    try {
+        await prisma.user.create({
+            data: {
+                nome: name,
+                telefone_whatsapp: cleanPhone
+            }
+        });
+        await msg.reply(`✅ Membro *${name}* adicionado à equipe!`);
+    } catch (e) {
+        await msg.reply('❌ Erro: Telefone já cadastrado ou inválido.');
+    }
+}
+
+    private async removeMember(msg: Message, text: string) {
+    const term = text.replace(/^(rm|remover) membro\s+/i, '').trim();
+
+    const user = await prisma.user.findFirst({
+        where: {
+            OR: [
+                { telefone_whatsapp: { contains: term } },
+                { nome: { contains: term, mode: 'insensitive' } }
+            ]
+        }
+    });
+
+    if (!user) return msg.reply('❌ Usuário não encontrado.');
+
+    try {
+        await prisma.user.delete({ where: { id: user.id } });
+        await msg.reply(`🗑️ Membro *${user.nome}* removido.`);
+    } catch (e) {
+        await msg.reply('❌ Não foi possível remover. O usuário pode ter tarefas vinculadas.');
+    }
+}
 }
 

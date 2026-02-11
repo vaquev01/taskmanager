@@ -3,6 +3,7 @@ import taskRoutes from './task.routes';
 import projectRoutes from './project.routes';
 import userRoutes from './user.routes';
 import reminderRoutes from './reminder.routes';
+import teamRoutes from './team.routes';
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/tasks', taskRoutes);
 router.use('/projects', projectRoutes);
 router.use('/users', userRoutes);
 router.use('/reminders', reminderRoutes);
+router.use('/teams', teamRoutes);
 
 export default router;
