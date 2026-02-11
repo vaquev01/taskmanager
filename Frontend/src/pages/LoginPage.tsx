@@ -85,7 +85,7 @@ export const LoginPage = () => {
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-semibold text-white text-lg truncate">{user.nome}</div>
+                                    <div className="font-semibold text-[var(--text-main)] text-lg truncate">{user.nome}</div>
                                     <div className="text-sm text-[var(--text-muted)] truncate">{user.email || user.telefone_whatsapp}</div>
                                 </div>
                                 <ArrowRight size={20} className={`

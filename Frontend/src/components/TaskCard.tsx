@@ -127,7 +127,7 @@ export const TaskCard = ({
                 <div className="flex items-center gap-2">
                     {/* Drag Handle */}
                     {isDraggable && (
-                        <div className="text-[var(--text-dim)] hover:text-white cursor-grab active:cursor-grabbing p-1 -ml-2" {...listeners}>
+                        <div className="text-[var(--text-dim)] hover:text-[var(--text-main)] cursor-grab active:cursor-grabbing p-1 -ml-2" {...listeners}>
                             <GripVertical size={14} />
                         </div>
                     )}
@@ -151,7 +151,7 @@ export const TaskCard = ({
             {/* Title */}
             <h3 className={`
                 font-display text-lg font-bold leading-snug mb-3
-                ${isDone ? 'line-through text-[var(--text-muted)]' : 'text-white group-hover:text-violet-200'}
+                ${isDone ? 'line-through text-[var(--text-muted)]' : 'text-[var(--text-main)] group-hover:text-violet-300'}
                 transition-colors
             `}>
                 {task.titulo}

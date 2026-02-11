@@ -125,7 +125,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
                         >
                             <Trash2 size={18} />
                         </button>
-                        <button onClick={onClose} className="p-2 rounded-xl hover:bg-[var(--glass-surface)] text-[var(--text-muted)] hover:text-white transition-all">
+                        <button onClick={onClose} className="p-2 rounded-xl hover:bg-[var(--glass-surface)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-all">
                             <X size={20} />
                         </button>
                     </div>
@@ -138,7 +138,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
                         type="text"
                         value={form.titulo}
                         onChange={e => setForm({ ...form, titulo: e.target.value })}
-                        className="w-full bg-transparent text-2xl font-bold font-display text-white placeholder:text-[var(--text-dim)] focus:outline-none"
+                        className="w-full bg-transparent text-2xl font-bold font-display text-[var(--text-main)] placeholder:text-[var(--text-dim)] focus:outline-none"
                     />
 
                     {/* Description */}
@@ -147,7 +147,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
                         onChange={e => setForm({ ...form, descricao: e.target.value })}
                         placeholder="Adicione uma descrição..."
                         rows={3}
-                        className="w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl p-4 text-sm text-white placeholder:text-[var(--text-dim)] focus:outline-none focus:border-violet-500/50 resize-none transition-colors"
+                        className="w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl p-4 text-sm text-[var(--text-main)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-violet-500/50 resize-none transition-colors"
                     />
 
                     {/* Status */}
@@ -204,7 +204,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
                                 type="datetime-local"
                                 value={form.prazo}
                                 onChange={e => setForm({ ...form, prazo: e.target.value })}
-                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50 [color-scheme:dark]"
+                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-main)] focus:outline-none focus:border-violet-500/50 [color-scheme:dark]"
                             />
                         </div>
                         <div>
@@ -215,7 +215,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
                                 <select
                                     value={form.responsavel_id}
                                     onChange={e => setForm({ ...form, responsavel_id: e.target.value })}
-                                    className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50 appearance-none cursor-pointer"
+                                    className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-main)] focus:outline-none focus:border-violet-500/50 appearance-none cursor-pointer"
                                 >
                                     <option value="">Eu</option>
                                     {users?.map((u: any) => (
@@ -238,7 +238,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
                                 value={form.grupo}
                                 onChange={e => setForm({ ...form, grupo: e.target.value })}
                                 placeholder="Ex: Agencia Bravvo"
-                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50 transition-colors"
+                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-main)] focus:outline-none focus:border-violet-500/50 transition-colors"
                             />
                         </div>
                         <div>
@@ -250,7 +250,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
                                 value={form.subgrupo}
                                 onChange={e => setForm({ ...form, subgrupo: e.target.value })}
                                 placeholder="Ex: Mkt, Liderança"
-                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50 transition-colors"
+                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-main)] focus:outline-none focus:border-violet-500/50 transition-colors"
                             />
                         </div>
                     </div>
@@ -264,7 +264,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
                             <input
                                 type="text"
                                 placeholder="Adicionar subtarefa..."
-                                className="flex-1 bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500/50"
+                                className="flex-1 bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2 text-sm text-[var(--text-main)] focus:outline-none focus:border-violet-500/50"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
@@ -307,7 +307,7 @@ export const TaskDetailModal = ({ task, isOpen, onClose }: TaskDetailModalProps)
                                     >
                                         {st.concluida && <CheckCircle2 size={12} className="text-white" />}
                                     </button>
-                                    <span className={`flex-1 text-sm ${st.concluida ? 'line-through text-[var(--text-dim)]' : 'text-white'}`}>{st.texto}</span>
+                                    <span className={`flex-1 text-sm ${st.concluida ? 'line-through text-[var(--text-dim)]' : 'text-[var(--text-main)]'}`}>{st.texto}</span>
                                     <button
                                         onClick={() => {
                                             const newSubtasks = [...(form.subtasks || [])].filter((_, i) => i !== idx);

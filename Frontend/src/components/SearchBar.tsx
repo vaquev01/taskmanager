@@ -61,7 +61,7 @@ export const SearchBar = ({ isOpen, onClose, onSelectTask }: SearchBarProps) => 
                         value={query}
                         onChange={e => setQuery(e.target.value)}
                         placeholder="Buscar tarefas..."
-                        className="flex-1 bg-transparent text-white text-lg font-medium placeholder:text-[var(--text-dim)] focus:outline-none"
+                        className="flex-1 bg-transparent text-[var(--text-main)] text-lg font-medium placeholder:text-[var(--text-dim)] focus:outline-none"
                     />
                     <kbd className="hidden sm:flex items-center gap-0.5 text-[10px] font-bold text-[var(--text-dim)] bg-[var(--glass-surface)] px-2 py-1 rounded-md border border-[var(--glass-border)]">
                         ESC
@@ -91,7 +91,7 @@ export const SearchBar = ({ isOpen, onClose, onSelectTask }: SearchBarProps) => 
                                     className="w-full px-5 py-3 flex items-center gap-4 hover:bg-[var(--glass-surface)] transition-colors text-left group"
                                 >
                                     <div className="flex-1 min-w-0">
-                                        <div className="font-semibold text-white truncate group-hover:text-violet-300 transition-colors">
+                                        <div className="font-semibold text-[var(--text-main)] truncate group-hover:text-violet-300 transition-colors">
                                             {task.titulo}
                                         </div>
                                         <div className="flex items-center gap-3 mt-1 text-xs text-[var(--text-muted)]">

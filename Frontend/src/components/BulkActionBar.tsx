@@ -26,7 +26,7 @@ export const BulkActionBar = ({ selectedIds, onClearSelection }: BulkActionBarPr
 
     return (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up">
-            <div className="bg-gray-900/90 backdrop-blur-md text-white px-6 py-4 rounded-full shadow-2xl border border-gray-700 flex items-center gap-6">
+            <div className="bg-gray-900/90 backdrop-blur-md text-[var(--text-main)] px-6 py-4 rounded-full shadow-2xl border border-gray-700 flex items-center gap-6">
                 <div className="flex items-center gap-3 border-r border-gray-700 pr-6">
                     <span className="bg-blue-600 text-xs font-bold px-2 py-0.5 rounded-full">{selectedIds.length}</span>
                     <span className="font-medium text-sm">Selecionados</span>

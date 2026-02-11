@@ -113,6 +113,24 @@
   background: rgba(0, 0, 0, 0.2);
 }
 
+[data-theme='light'] .glass-card::before {
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.04) 50%, transparent 100%);
+}
+
+[data-theme='light'] .stat-value {
+  color: var(--text-main);
+}
+
+[data-theme='light'] .nav-item.active {
+  color: var(--brand-primary);
+}
+
+[data-theme='light'] input[type="datetime-local"],
+[data-theme='light'] input[type="time"],
+[data-theme='light'] input[type="date"] {
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }

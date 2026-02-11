@@ -30,7 +30,7 @@ export const TeamPage = () => {
                         <Sparkles size={10} /> PRO
                     </span>
                 </div>
-                <h1 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight">
+                <h1 className="text-4xl md:text-5xl font-extrabold text-[var(--text-main)] tracking-tight">
                     <span className="bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">Equipe</span>
                 </h1>
             </div>
@@ -91,7 +91,7 @@ export const TeamPage = () => {
                                             )}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <h3 className="font-bold text-white text-lg">{user.nome}</h3>
+                                            <h3 className="font-bold text-[var(--text-main)] text-lg">{user.nome}</h3>
                                             {user.email && (
                                                 <div className="flex items-center gap-1.5 text-sm text-[var(--text-muted)] mt-1">
                                                     <Mail size={12} />

@@ -61,7 +61,7 @@ export const CalendarPage = () => {
                         <Sparkles size={10} /> PRO
                     </span>
                 </div>
-                <h1 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight">
+                <h1 className="text-4xl md:text-5xl font-extrabold text-[var(--text-main)] tracking-tight">
                     <span className="bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">Calendário</span>
                 </h1>
             </div>
@@ -72,11 +72,11 @@ export const CalendarPage = () => {
                     <div className="glass-card p-6">
                         {/* Nav */}
                         <div className="flex items-center justify-between mb-6">
-                            <button onClick={prevMonth} className="p-2.5 rounded-xl hover:bg-[var(--glass-surface)] text-[var(--text-muted)] hover:text-white transition-all">
+                            <button onClick={prevMonth} className="p-2.5 rounded-xl hover:bg-[var(--glass-surface)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-all">
                                 <ChevronLeft size={20} />
                             </button>
                             <h2 className="text-xl font-bold font-display capitalize">{monthName}</h2>
-                            <button onClick={nextMonth} className="p-2.5 rounded-xl hover:bg-[var(--glass-surface)] text-[var(--text-muted)] hover:text-white transition-all">
+                            <button onClick={nextMonth} className="p-2.5 rounded-xl hover:bg-[var(--glass-surface)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-all">
                                 <ChevronRight size={20} />
                             </button>
                         </div>
@@ -151,7 +151,7 @@ export const CalendarPage = () => {
                                             <div className={`w-2 h-2 rounded-full ${priorityColors[task.prioridade] || 'bg-gray-500'}`} />
                                             <span className="text-xs font-bold text-[var(--text-muted)] uppercase">{task.prioridade}</span>
                                         </div>
-                                        <h4 className="font-semibold text-white">{task.titulo}</h4>
+                                        <h4 className="font-semibold text-[var(--text-main)]">{task.titulo}</h4>
                                         {task.project && <p className="text-xs text-[var(--text-dim)] mt-1">{task.project.nome}</p>}
                                     </div>
                                 ))}

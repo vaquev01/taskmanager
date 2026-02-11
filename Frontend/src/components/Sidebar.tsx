@@ -58,7 +58,7 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
                     </div>
                     <button
                         onClick={onClose}
-                        className="md:hidden p-2 rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-[var(--glass-surface)] transition-all"
+                        className="md:hidden p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--glass-surface)] transition-all"
                     >
                         <X size={20} />
                     </button>
@@ -88,7 +88,7 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
                             <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-[var(--bg-sidebar)]" />
                         </div>
                         <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-white truncate">{user?.nome || 'Usuário'}</div>
+                            <div className="text-sm font-semibold text-[var(--text-main)] truncate">{user?.nome || 'Usuário'}</div>
                             <div className="text-xs text-violet-400 font-medium">Pro Plan</div>
                         </div>
                         <button

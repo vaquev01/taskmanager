@@ -93,7 +93,7 @@ export const CreateTaskModal = ({ isOpen, onClose }: CreateTaskModalProps) => {
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
                     <h2 className="text-xl font-bold font-display">Nova Tarefa</h2>
-                    <button onClick={onClose} className="p-2 rounded-xl hover:bg-[var(--glass-surface)] text-[var(--text-muted)] hover:text-white transition-all">
+                    <button onClick={onClose} className="p-2 rounded-xl hover:bg-[var(--glass-surface)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-all">
                         <X size={20} />
                     </button>
                 </div>
@@ -108,7 +108,7 @@ export const CreateTaskModal = ({ isOpen, onClose }: CreateTaskModalProps) => {
                             value={form.titulo}
                             onChange={e => setForm({ ...form, titulo: e.target.value })}
                             placeholder="Título da tarefa..."
-                            className="w-full bg-transparent text-2xl font-bold font-display text-white placeholder:text-[var(--text-dim)] focus:outline-none"
+                            className="w-full bg-transparent text-2xl font-bold font-display text-[var(--text-main)] placeholder:text-[var(--text-dim)] focus:outline-none"
                         />
                     </div>
 
@@ -119,7 +119,7 @@ export const CreateTaskModal = ({ isOpen, onClose }: CreateTaskModalProps) => {
                             onChange={e => setForm({ ...form, descricao: e.target.value })}
                             placeholder="Adicione uma descrição..."
                             rows={3}
-                            className="w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl p-4 text-sm text-white placeholder:text-[var(--text-dim)] focus:outline-none focus:border-violet-500/50 resize-none transition-colors"
+                            className="w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl p-4 text-sm text-[var(--text-main)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-violet-500/50 resize-none transition-colors"
                         />
                     </div>
 
@@ -155,7 +155,7 @@ export const CreateTaskModal = ({ isOpen, onClose }: CreateTaskModalProps) => {
                                 type="datetime-local"
                                 value={form.prazo}
                                 onChange={e => setForm({ ...form, prazo: e.target.value })}
-                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50 transition-colors [color-scheme:dark]"
+                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-main)] focus:outline-none focus:border-violet-500/50 transition-colors [color-scheme:dark]"
                             />
                         </div>
                         <div>
@@ -166,7 +166,7 @@ export const CreateTaskModal = ({ isOpen, onClose }: CreateTaskModalProps) => {
                                 <select
                                     value={form.responsavel_id}
                                     onChange={e => setForm({ ...form, responsavel_id: e.target.value })}
-                                    className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50 transition-colors appearance-none cursor-pointer"
+                                    className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-main)] focus:outline-none focus:border-violet-500/50 transition-colors appearance-none cursor-pointer"
                                 >
                                     <option value="">Eu</option>
                                     {users?.filter((u: any) => u.id !== user?.id).map((u: any) => (
@@ -195,7 +195,7 @@ export const CreateTaskModal = ({ isOpen, onClose }: CreateTaskModalProps) => {
                                 value={form.grupo}
                                 onChange={e => setForm({ ...form, grupo: e.target.value })}
                                 placeholder="Ex: Agencia Bravvo"
-                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50 transition-colors"
+                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-main)] focus:outline-none focus:border-violet-500/50 transition-colors"
                             />
                         </div>
                         <div>
@@ -207,7 +207,7 @@ export const CreateTaskModal = ({ isOpen, onClose }: CreateTaskModalProps) => {
                                 value={form.subgrupo}
                                 onChange={e => setForm({ ...form, subgrupo: e.target.value })}
                                 placeholder="Ex: Mkt, Liderança"
-                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50 transition-colors"
+                                className="mt-2 w-full bg-[var(--glass-surface)] border border-[var(--glass-border)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-main)] focus:outline-none focus:border-violet-500/50 transition-colors"
                             />
                         </div>
                     </div>

@@ -214,7 +214,7 @@ export const Dashboard = () => {
                             <Sparkles size={10} /> PRO
                         </span>
                     </div>
-                    <h1 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight">
+                    <h1 className="text-4xl md:text-5xl font-extrabold text-[var(--text-main)] tracking-tight">
                         Minhas <span className="bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">Tarefas</span>
                     </h1>
                 </div>
@@ -235,21 +235,21 @@ export const Dashboard = () => {
                     <div className="flex items-center bg-[var(--glass-surface)] rounded-lg p-1 border border-[var(--glass-border)] mr-2">
                         <button
                             onClick={() => setViewMode('LIST')}
-                            className={`p-2 rounded-md transition-all ${viewMode === 'LIST' ? 'bg-violet-500/20 text-violet-300' : 'text-[var(--text-muted)] hover:text-white'}`}
+                            className={`p-2 rounded-md transition-all ${viewMode === 'LIST' ? 'bg-violet-500/20 text-violet-300' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
                             title="Lista"
                         >
                             <List size={18} />
                         </button>
                         <button
                             onClick={() => setViewMode('GROUPED')}
-                            className={`p-2 rounded-md transition-all ${viewMode === 'GROUPED' ? 'bg-violet-500/20 text-violet-300' : 'text-[var(--text-muted)] hover:text-white'}`}
+                            className={`p-2 rounded-md transition-all ${viewMode === 'GROUPED' ? 'bg-violet-500/20 text-violet-300' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
                             title="Agrupar por Projeto"
                         >
                             <LayoutGrid size={18} />
                         </button>
                         <button
                             onClick={() => setViewMode('KANBAN')}
-                            className={`p-2 rounded-md transition-all ${viewMode === 'KANBAN' ? 'bg-violet-500/20 text-violet-300' : 'text-[var(--text-muted)] hover:text-white'}`}
+                            className={`p-2 rounded-md transition-all ${viewMode === 'KANBAN' ? 'bg-violet-500/20 text-violet-300' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
                             title="Kanban Board"
                         >
                             <Kanban size={18} />
@@ -336,7 +336,7 @@ export const Dashboard = () => {
                         </div>
                         <div className="flex items-center gap-2">
                             <span className={`w-2.5 h-2.5 rounded-full ${waStatus?.isReady ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
-                            <span className="text-lg font-bold text-white">WhatsApp</span>
+                            <span className="text-lg font-bold text-[var(--text-main)]">WhatsApp</span>
                         </div>
                         <div className="text-[var(--text-muted)] text-sm font-medium mt-1">{waStatus?.isReady ? 'Conectado' : 'Desconectado'}</div>
                     </div>
@@ -355,8 +355,8 @@ export const Dashboard = () => {
                                     key={f}
                                     onClick={() => setFilter(f)}
                                     className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 relative ${filter === f
-                                        ? 'text-white'
-                                        : 'text-[var(--text-muted)] hover:text-white'
+                                        ? 'text-[var(--text-main)]'
+                                        : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
                                         }`}
                                 >
                                     {filter === f && (
@@ -374,7 +374,7 @@ export const Dashboard = () => {
                             <select
                                 value={grupoFilter}
                                 onChange={(e) => setGrupoFilter(e.target.value)}
-                                className="h-11 px-4 rounded-xl bg-[var(--glass-surface)] border border-[var(--glass-border)] text-sm font-semibold text-white appearance-none cursor-pointer hover:border-violet-500/40 transition-all focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                                className="h-11 px-4 rounded-xl bg-[var(--glass-surface)] border border-[var(--glass-border)] text-sm font-semibold text-[var(--text-main)] appearance-none cursor-pointer hover:border-violet-500/40 transition-all focus:outline-none focus:ring-1 focus:ring-violet-500/50"
                             >
                                 <option value="ALL">Todos os Grupos</option>
                                 {uniqueGrupos.map((g) => (
@@ -389,7 +389,7 @@ export const Dashboard = () => {
                             <select
                                 value={sortBy}
                                 onChange={(e) => setSortBy(e.target.value as any)}
-                                className="h-11 px-4 rounded-xl bg-[var(--glass-surface)] border border-[var(--glass-border)] text-sm font-semibold text-white appearance-none cursor-pointer hover:border-violet-500/40 transition-all focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                                className="h-11 px-4 rounded-xl bg-[var(--glass-surface)] border border-[var(--glass-border)] text-sm font-semibold text-[var(--text-main)] appearance-none cursor-pointer hover:border-violet-500/40 transition-all focus:outline-none focus:ring-1 focus:ring-violet-500/50"
                             >
                                 <option value="RECENT">Mais Recentes</option>
                                 <option value="DEADLINE">Prazo Mais Próximo</option>
@@ -489,7 +489,7 @@ export const Dashboard = () => {
                             <div className="space-y-8">
                                 {Object.entries(groupedTasks()).map(([project, projectTasks], pIndex) => (
                                     <div key={project} className="animate-fade-in-up" style={{ animationDelay: `${pIndex * 0.1}s` }}>
-                                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                                        <h3 className="text-xl font-bold text-[var(--text-main)] mb-4 flex items-center gap-2">
                                             <span className="w-2 h-8 rounded-full bg-gradient-to-b from-violet-500 to-cyan-500 block" />
                                             {project}
                                             <span className="text-sm font-medium text-[var(--text-muted)] ml-2 bg-[var(--glass-surface)] px-2 py-0.5 rounded-full border border-[var(--glass-border)]">
@@ -526,7 +526,7 @@ export const Dashboard = () => {
                                     <Sparkles size={12} className="text-cyan-400" />
                                 </div>
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-2">Tudo limpo por aqui! ✨</h3>
+                            <h3 className="text-xl font-bold text-[var(--text-main)] mb-2">Tudo limpo por aqui! ✨</h3>
                             <p className="text-[var(--text-muted)] text-sm max-w-sm mb-6">Nenhuma tarefa encontrada. Crie uma nova tarefa ou envie uma mensagem pelo WhatsApp.</p>
                             <button
                                 onClick={() => setIsCreateOpen(true)}
@@ -547,7 +547,7 @@ export const Dashboard = () => {
                                 <Smartphone size={18} />
                             </div>
                             <div>
-                                <h3 className="font-display font-bold text-white">Conexão WhatsApp</h3>
+                                <h3 className="font-display font-bold text-[var(--text-main)]">Conexão WhatsApp</h3>
                                 <p className="text-xs text-[var(--text-muted)]">Escaneie para conectar</p>
                             </div>
                         </div>

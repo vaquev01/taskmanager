@@ -15,7 +15,7 @@ export const Layout = () => {
                 <div className="md:hidden sticky top-0 z-30 flex items-center justify-between p-4 bg-[var(--bg-app)]/80 backdrop-blur-xl border-b border-[var(--glass-border)]">
                     <button
                         onClick={() => setIsSidebarOpen(true)}
-                        className="p-2.5 rounded-xl bg-[var(--glass-surface)] text-white border border-[var(--glass-border)] hover:bg-[var(--glass-surface-hover)] transition-all"
+                        className="p-2.5 rounded-xl bg-[var(--glass-surface)] text-[var(--text-main)] border border-[var(--glass-border)] hover:bg-[var(--glass-surface-hover)] transition-all"
                     >
                         <Menu size={20} />
                     </button>
