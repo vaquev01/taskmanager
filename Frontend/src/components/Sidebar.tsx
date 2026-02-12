@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../lib/api';
 import { LayoutDashboard, Calendar, Users, Settings, Zap, X, Sparkles, LogOut, Sun, Moon } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import { useTranslation } from 'react-i18next';
 
 interface SidebarProps {
     isOpen?: boolean;
@@ -12,6 +13,8 @@ interface SidebarProps {
 export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     const { user, logout, theme, toggleTheme } = useStore();
     const navigate = useNavigate();
+
+    const { t } = useTranslation();
 
     const { data: users } = useQuery({
         queryKey: ['users'],
@@ -68,10 +71,10 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
                 <nav className="flex flex-col gap-1 px-4 flex-1">
                     <div className="text-[10px] font-bold text-[var(--text-dim)] uppercase tracking-[0.15em] mb-3 px-3">Navigation</div>
 
-                    <SidebarLink to="/dashboard" icon={<LayoutDashboard size={18} />} label="Dashboard" onClick={onClose} />
-                    <SidebarLink to="/dashboard/calendar" icon={<Calendar size={18} />} label="Calendar" onClick={onClose} />
-                    <SidebarLink to="/dashboard/team" icon={<Users size={18} />} label="Team" badge={users?.length ? String(users.length) : undefined} onClick={onClose} />
-                    <SidebarLink to="/dashboard/settings" icon={<Settings size={18} />} label="Settings" onClick={onClose} />
+                    <SidebarLink to="/dashboard" icon={<LayoutDashboard size={18} />} label={t('sidebar.dashboard')} onClick={onClose} />
+                    <SidebarLink to="/dashboard/calendar" icon={<Calendar size={18} />} label={t('sidebar.calendar')} onClick={onClose} />
+                    <SidebarLink to="/dashboard/team" icon={<Users size={18} />} label={t('sidebar.team')} badge={users?.length ? String(users.length) : undefined} onClick={onClose} />
+                    <SidebarLink to="/dashboard/settings" icon={<Settings size={18} />} label={t('sidebar.settings')} onClick={onClose} />
                 </nav>
 
                 {/* User Profile */}
@@ -101,7 +104,7 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
                         <button
                             onClick={handleLogout}
                             className="p-2 rounded-lg text-[var(--text-dim)] hover:text-rose-400 hover:bg-rose-500/10 transition-all"
-                            title="Sair"
+                            title={t('sidebar.logout')}
                         >
                             <LogOut size={16} />
                         </button>

@@ -2,9 +2,13 @@ import { useEffect } from 'react';
 import { AdMob, BannerAdSize, BannerAdPosition, BannerAdPluginEvents } from '@capacitor-community/admob';
 import { Capacitor } from '@capacitor/core';
 
+import { useStore } from '../store/useStore';
+
 export const AdMobBanner = () => {
+    const { user } = useStore();
+
     useEffect(() => {
-        if (!Capacitor.isNativePlatform()) return;
+        if (!Capacitor.isNativePlatform() || user?.isPremium) return;
 
         const showBanner = async () => {
             try {
@@ -35,7 +39,7 @@ export const AdMobBanner = () => {
                 AdMob.removeBanner().catch(console.error);
             }
         };
-    }, []);
+    }, [user?.isPremium]);
 
     return null; // Banner is native overlay, no DOM element needed
 };

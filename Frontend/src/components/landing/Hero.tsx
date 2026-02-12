@@ -1,8 +1,10 @@
 import { motion } from 'framer-motion';
 import { ArrowRight, Zap, Rocket } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 export const Hero = () => {
+    const { t } = useTranslation();
     const navigate = useNavigate();
 
     return (
@@ -24,19 +26,18 @@ export const Hero = () => {
                     transition={{ duration: 0.8 }}
                 >
                     <span className="inline-block px-4 py-1.5 mb-6 text-sm font-medium tracking-wider text-cyan-400 uppercase bg-cyan-900/30 rounded-full border border-cyan-500/30 backdrop-blur-sm">
-                        O Futuro da Produtividade
+                        {t('hero.badge')}
                     </span>
 
                     <h1 className="text-5xl md:text-7xl font-bold mb-6 tracking-tight text-white drop-shadow-lg">
-                        Seu Segundo Cérebro <br />
+                        {t('hero.title')} <br />
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 animate-gradient-x">
-                            Turbinado por IA
+                            {t('hero.subtitle')}
                         </span>
                     </h1>
 
                     <p className="text-lg md:text-xl text-slate-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-                        Gerencie tarefas pelo WhatsApp, converse com personas e deixe a IA organizar sua vida.
-                        Simples como uma mensagem, poderoso como um sistema enterprise.
+                        {t('hero.desc')}
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -47,7 +48,7 @@ export const Hero = () => {
                             className="px-8 py-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl font-bold text-lg shadow-lg shadow-cyan-500/20 flex items-center gap-2 transition-all"
                         >
                             <Rocket className="w-5 h-5" />
-                            Começar Agora Gratuitamente
+                            {t('hero.cta_start')}
                         </motion.button>
 
                         <motion.button
@@ -57,7 +58,7 @@ export const Hero = () => {
                             className="px-8 py-4 bg-slate-800/50 hover:bg-slate-800/80 text-white border border-slate-700 rounded-xl font-bold text-lg backdrop-blur-sm flex items-center gap-2 transition-all"
                         >
                             <Zap className="w-5 h-5 text-yellow-400" />
-                            Ver Funcionalidades
+                            {t('hero.cta_features')}
                         </motion.button>
                     </div>
                 </motion.div>

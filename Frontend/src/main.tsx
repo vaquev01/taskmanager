@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.tsx'
 import { ToastContainer } from './components/Toast.tsx'
 import './index.css'
+import './lib/i18n';
 
 const queryClient = new QueryClient({
   defaultOptions: {

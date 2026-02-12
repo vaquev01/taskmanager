@@ -10,6 +10,7 @@ export interface User {
     timezone?: string
     dailySummaryTime?: string
     role?: 'USER' | 'ADMIN' | 'SUPER_ADMIN'
+    isPremium?: boolean // Freemium Status
 }
 
 interface AppState {
