@@ -11,7 +11,7 @@ CHROME_BIN = "/usr/bin/chromium-browser"
 # Let's try without forcing CHROME_BIN path first, or use a command to find it.
 
 [phases.install]
-cmds = ["npm install --ignore-scripts"]
+cmds = ["npm ci"]
 
 [phases.build]
 cmds = ["npm run generate --prefix Backend", "npm run build"]
