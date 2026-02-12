@@ -10,8 +10,11 @@ CHROME_BIN = "/usr/bin/chromium-browser"
 # Getting usage path dynamically is harder in TOML.
 # Let's try without forcing CHROME_BIN path first, or use a command to find it.
 
+[variables]
+NPM_CONFIG_PRODUCTION = "false"
+
 [phases.install]
-cmds = ["npm ci"]
+cmds = ["npm install"]
 
 [phases.build]
 cmds = ["npm run generate --prefix Backend", "npm run build"]
