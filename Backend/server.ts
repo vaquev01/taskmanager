@@ -71,8 +71,8 @@ async function ensureAdminUser() {
 }
 
 // Start Server
-app.listen(PORT, async () => {
-    console.log(`✅ Server running on http://localhost:${PORT}`);
+app.listen(Number(PORT), '0.0.0.0', async () => {
+    console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
 
     // Start Services after server is listening
     try {
