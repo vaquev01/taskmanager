@@ -1,0 +1,13 @@
+{
+    "name": "taskmanager-monorepo",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "postinstall": "npm install --prefix Frontend && npm install --prefix Backend",
+        "build": "npm run build --prefix Frontend && npm run build --prefix Backend",
+        "start": "npm start --prefix Backend"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}

@@ -32,8 +32,17 @@ app.use('/api/whatsapp', whatsappRouter(whatsappService));
 app.use('/api', apiRoutes); // General API routes last
 
 // Health Check
-app.get('/', (req, res) => {
+app.get('/health', (req, res) => {
     res.json({ message: 'TaskFlow API is running 🚀', timestamp: new Date(), whatsapp: whatsappService.isReady ? 'CONNECTED' : 'DISCONNECTED' });
+});
+
+// Serve Frontend (After API routes)
+import path from 'path';
+const frontendPath = path.join(__dirname, '../../Frontend/dist');
+app.use(express.static(frontendPath));
+
+app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
 import { prisma } from './lib/prisma';
