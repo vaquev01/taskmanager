@@ -127,7 +127,7 @@ export class WhatsappService {
                 puppeteer: {
                     headless: true,
                     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
-                    executablePath: process.env.CHROME_BIN || undefined // Use system chrome if available
+                    executablePath: process.env.CHROME_BIN || (process.platform === 'linux' ? 'chromium' : undefined)
                 }
             });
 

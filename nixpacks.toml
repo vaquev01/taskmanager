@@ -1,5 +1,14 @@
 [phases.setup]
-nixPkgs = ["...", "nodejs", "google-chrome", "ffmpeg"]
+nixPkgs = ["nodejs", "chromium", "ffmpeg"]
+
+[variables]
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
+CHROME_BIN = "/usr/bin/chromium-browser" 
+# Note: In Nixpacks/Alpine/some distros it varies, but defining it helps. 
+# However, relying on PATH is safer if we can. 
+# Let's simple enable Chromium. Nix usually links it.
+# Getting usage path dynamically is harder in TOML.
+# Let's try without forcing CHROME_BIN path first, or use a command to find it.
 
 [phases.build]
 cmds = ["npm install", "npm run build"]
