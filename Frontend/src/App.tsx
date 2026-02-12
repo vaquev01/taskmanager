@@ -10,6 +10,10 @@ import { TeamPage } from './pages/TeamPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { useStore } from './store/useStore';
 import { Loader2 } from 'lucide-react';
+import { LandingPage } from './pages/LandingPage';
+import { AdminDashboard } from './pages/AdminDashboard';
+import { TermsPage } from './pages/TermsPage';
+import { AdMob } from '@capacitor-community/admob';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, _hasHydrated } = useStore();
@@ -29,11 +33,37 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Initialize AdMob
+  useEffect(() => {
+    const initAdMob = async () => {
+      try {
+        await AdMob.initialize({
+          testingDevices: ['2077ef9a63d2b398840261c8221a0c9b'],
+          initializeForTesting: true,
+        });
+        console.log('AdMob Initialized');
+      } catch (e) {
+        console.error('AdMob Init Failed:', e);
+      }
+    };
+    initAdMob();
+  }, []);
+
   return (
     <ErrorBoundary>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={
+        <Route path="/terms" element={<TermsPage />} />
+
+        <Route path="/admin" element={
+          <ProtectedRoute>
+            <AdminDashboard />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/dashboard" element={
           <ProtectedRoute>
             <Layout />
           </ProtectedRoute>
@@ -43,6 +73,7 @@ function App() {
           <Route path="team" element={<ErrorBoundary><TeamPage /></ErrorBoundary>} />
           <Route path="settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
         </Route>
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ToastContainer />

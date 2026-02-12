@@ -3,6 +3,8 @@ import { Outlet } from 'react-router-dom';
 import { useState } from 'react';
 import { Menu } from 'lucide-react';
 
+import { AdMobBanner } from './AdMobBanner';
+
 export const Layout = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -26,6 +28,9 @@ export const Layout = () => {
                 <div className="flex-1 overflow-y-auto w-full">
                     <Outlet />
                 </div>
+
+                {/* AdMob Banner Placeholder (Bottom) */}
+                <AdMobBanner />
             </main>
         </div>
     );

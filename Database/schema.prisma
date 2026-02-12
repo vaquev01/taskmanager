@@ -24,6 +24,12 @@ enum TaskPriority {
   ALTA
 }
 
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
 model User {
   id                String   @id @default(uuid())
   nome              String
@@ -31,6 +37,8 @@ model User {
   email             String?  @unique
   avatar            String?
   timezone          String   @default("America/Sao_Paulo")
+  persona           String?  @default("DEFAULT")
+  role              Role     @default(USER)
   dailySummaryTime  String?  // Format "HH:mm" (24h)
   created_at        DateTime @default(now())
 

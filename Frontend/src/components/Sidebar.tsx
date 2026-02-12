@@ -68,10 +68,10 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
                 <nav className="flex flex-col gap-1 px-4 flex-1">
                     <div className="text-[10px] font-bold text-[var(--text-dim)] uppercase tracking-[0.15em] mb-3 px-3">Navigation</div>
 
-                    <SidebarLink to="/" icon={<LayoutDashboard size={18} />} label="Dashboard" onClick={onClose} />
-                    <SidebarLink to="/calendar" icon={<Calendar size={18} />} label="Calendar" onClick={onClose} />
-                    <SidebarLink to="/team" icon={<Users size={18} />} label="Team" badge={users?.length ? String(users.length) : undefined} onClick={onClose} />
-                    <SidebarLink to="/settings" icon={<Settings size={18} />} label="Settings" onClick={onClose} />
+                    <SidebarLink to="/dashboard" icon={<LayoutDashboard size={18} />} label="Dashboard" onClick={onClose} />
+                    <SidebarLink to="/dashboard/calendar" icon={<Calendar size={18} />} label="Calendar" onClick={onClose} />
+                    <SidebarLink to="/dashboard/team" icon={<Users size={18} />} label="Team" badge={users?.length ? String(users.length) : undefined} onClick={onClose} />
+                    <SidebarLink to="/dashboard/settings" icon={<Settings size={18} />} label="Settings" onClick={onClose} />
                 </nav>
 
                 {/* User Profile */}

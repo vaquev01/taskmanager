@@ -12,8 +12,12 @@ export const LoginPage = () => {
     const { setUser, isAuthenticated } = useStore();
     const navigate = useNavigate();
 
+    const [isMasterLogin, setIsMasterLogin] = useState(false);
+    const [credentials, setCredentials] = useState({ username: '', password: '' });
+
     useEffect(() => {
-        if (isAuthenticated) { navigate('/'); return; }
+        // Auto-redirect disabled to allow profile management
+        // if (isAuthenticated) { navigate('/dashboard'); return; }
         api.get('/users')
             .then(res => setUsers(res.data))
             .catch(console.error)
@@ -24,8 +28,22 @@ export const LoginPage = () => {
         setSelectedId(user.id);
         setTimeout(() => {
             setUser(user);
-            navigate('/');
+            navigate('/dashboard');
         }, 400);
+    };
+
+    const handleMasterLogin = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (credentials.username === 'wardogs' && credentials.password === 'wardogs') {
+            const masterUser = users.find(u => u.nome === 'Wardogs' || u.role === 'SUPER_ADMIN');
+            if (masterUser) {
+                handleLogin(masterUser);
+            } else {
+                alert('Usuário Master não encontrado no banco de dados. Execute o seed.');
+            }
+        } else {
+            alert('Credenciais Inválidas');
+        }
     };
 
     return (
@@ -51,50 +69,98 @@ export const LoginPage = () => {
                     </p>
                 </div>
 
-                {/* User Cards */}
-                {loading ? (
-                    <div className="flex justify-center py-12">
-                        <Loader2 size={32} className="animate-spin text-violet-400" />
-                    </div>
-                ) : users.length === 0 ? (
-                    <div className="glass-card p-8 text-center">
-                        <p className="text-[var(--text-muted)] mb-2">Nenhum usuário encontrado.</p>
-                        <p className="text-sm text-[var(--text-dim)]">Execute o seed do banco de dados primeiro.</p>
-                    </div>
+                {isMasterLogin ? (
+                    <form onSubmit={handleMasterLogin} className="glass-card p-8 space-y-6">
+                        <div className="text-center mb-4">
+                            <h2 className="text-2xl font-bold">Acesso Master</h2>
+                            <p className="text-sm text-slate-400">Entre com credenciais administrativas</p>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-2 text-slate-300">Usuário</label>
+                            <input
+                                type="text"
+                                className="w-full p-3 rounded-lg bg-slate-900/50 border border-slate-700 text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                                value={credentials.username}
+                                onChange={e => setCredentials({ ...credentials, username: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-2 text-slate-300">Senha</label>
+                            <input
+                                type="password"
+                                className="w-full p-3 rounded-lg bg-slate-900/50 border border-slate-700 text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                                value={credentials.password}
+                                onChange={e => setCredentials({ ...credentials, password: e.target.value })}
+                            />
+                        </div>
+                        <button type="submit" className="w-full py-3 bg-purple-600 hover:bg-purple-500 rounded-lg text-white font-bold transition-all">
+                            Entrar
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsMasterLogin(false)}
+                            className="w-full text-center text-sm text-slate-500 hover:text-slate-300 mt-4"
+                        >
+                            Voltar para seleção de perfil
+                        </button>
+                    </form>
                 ) : (
-                    <div className="flex flex-col gap-3">
-                        {users.map((user) => (
+                    <>
+                        {/* User Cards */}
+                        {loading ? (
+                            <div className="flex justify-center py-12">
+                                <Loader2 size={32} className="animate-spin text-violet-400" />
+                            </div>
+                        ) : users.length === 0 ? (
+                            <div className="glass-card p-8 text-center">
+                                <p className="text-[var(--text-muted)] mb-2">Nenhum usuário encontrado.</p>
+                                <p className="text-sm text-[var(--text-dim)]">Execute o seed do banco de dados primeiro.</p>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-3">
+                                {users.filter(u => u.role !== 'SUPER_ADMIN').map((user) => (
+                                    <button
+                                        key={user.id}
+                                        onClick={() => handleLogin(user)}
+                                        disabled={selectedId !== null}
+                                        className={`
+                                        group w-full p-5 rounded-2xl border transition-all duration-300 text-left
+                                        flex items-center gap-4
+                                        ${selectedId === user.id
+                                                ? 'bg-gradient-to-r from-violet-500/20 to-cyan-500/10 border-violet-500/40 scale-[0.98]'
+                                                : 'bg-[var(--glass-surface)] border-[var(--glass-border)] hover:border-violet-500/30 hover:bg-[var(--glass-surface-hover)] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-violet-500/5'
+                                            }
+                                    `}
+                                    >
+                                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-600 to-cyan-500 flex items-center justify-center text-lg font-bold text-white shadow-lg overflow-hidden shrink-0">
+                                            {user.avatar ? (
+                                                <img src={user.avatar} alt={user.nome} className="w-full h-full object-cover" />
+                                            ) : (
+                                                user.nome.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-semibold text-[var(--text-main)] text-lg truncate">{user.nome}</div>
+                                            <div className="text-sm text-[var(--text-muted)] truncate">{user.email || user.telefone_whatsapp}</div>
+                                        </div>
+                                        <ArrowRight size={20} className={`
+                                        text-[var(--text-dim)] transition-all
+                                        ${selectedId === user.id ? 'text-violet-400 translate-x-1' : 'group-hover:text-violet-400 group-hover:translate-x-1'}
+                                    `} />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="mt-8 flex justify-center">
                             <button
-                                key={user.id}
-                                onClick={() => handleLogin(user)}
-                                disabled={selectedId !== null}
-                                className={`
-                                    group w-full p-5 rounded-2xl border transition-all duration-300 text-left
-                                    flex items-center gap-4
-                                    ${selectedId === user.id
-                                        ? 'bg-gradient-to-r from-violet-500/20 to-cyan-500/10 border-violet-500/40 scale-[0.98]'
-                                        : 'bg-[var(--glass-surface)] border-[var(--glass-border)] hover:border-violet-500/30 hover:bg-[var(--glass-surface-hover)] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-violet-500/5'
-                                    }
-                                `}
+                                onClick={() => setIsMasterLogin(true)}
+                                className="text-white/30 hover:text-white/80 text-xs transition-colors"
                             >
-                                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-600 to-cyan-500 flex items-center justify-center text-lg font-bold text-white shadow-lg overflow-hidden shrink-0">
-                                    {user.avatar ? (
-                                        <img src={user.avatar} alt={user.nome} className="w-full h-full object-cover" />
-                                    ) : (
-                                        user.nome.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="font-semibold text-[var(--text-main)] text-lg truncate">{user.nome}</div>
-                                    <div className="text-sm text-[var(--text-muted)] truncate">{user.email || user.telefone_whatsapp}</div>
-                                </div>
-                                <ArrowRight size={20} className={`
-                                    text-[var(--text-dim)] transition-all
-                                    ${selectedId === user.id ? 'text-violet-400 translate-x-1' : 'group-hover:text-violet-400 group-hover:translate-x-1'}
-                                `} />
+                                Área Restrita (Master)
                             </button>
-                        ))}
-                    </div>
+                        </div>
+                    </>
                 )}
 
                 {/* Footer */}

@@ -94,7 +94,7 @@ export const Dashboard = () => {
     const restartWhatsappMutation = useMutation({
         mutationFn: () => api.post('/whatsapp/restart'),
         onSuccess: () => addToast('Reiniciando WhatsApp...', 'info'),
-        onError: () => addToast('Erro ao reiniciar WhatsApp', 'error'),
+        onError: (err) => console.error('Silent error restarting WhatsApp:', err),
     });
 
     // DnD Sensors

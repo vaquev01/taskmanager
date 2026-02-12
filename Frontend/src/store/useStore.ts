@@ -9,6 +9,7 @@ export interface User {
     avatar?: string | null
     timezone?: string
     dailySummaryTime?: string
+    role?: 'USER' | 'ADMIN' | 'SUPER_ADMIN'
 }
 
 interface AppState {

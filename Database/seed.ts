@@ -6,31 +6,33 @@ async function main() {
     console.log('🌱 Starting seeding...')
 
     // 1. Clean up existing data (optional, be careful in prod)
-    // await prisma.reminder.deleteMany()
-    // await prisma.comment.deleteMany()
-    // await prisma.subtask.deleteMany()
-    // await prisma.task.deleteMany()
-    // await prisma.project.deleteMany()
-    // await prisma.teamMember.deleteMany()
-    // await prisma.team.deleteMany()
-    // await prisma.user.deleteMany()
+    await prisma.reminder.deleteMany()
+    await prisma.comment.deleteMany()
+    await prisma.subtask.deleteMany()
+    await prisma.task.deleteMany()
+    await prisma.project.deleteMany()
+    await prisma.teamMember.deleteMany()
+    await prisma.team.deleteMany()
+    await prisma.user.deleteMany()
 
     // 2. Create Users
-    const user1 = await prisma.user.create({
+    const superAdmin = await prisma.user.create({
         data: {
-            nome: 'Alice Admin',
+            nome: 'Wardogs',
             telefone_whatsapp: '5511999999999',
-            email: 'alice@example.com',
-            avatar: 'https://i.pravatar.cc/150?u=alice'
+            email: 'admin@wardogs.com',
+            avatar: 'https://i.pravatar.cc/150?u=master',
+            role: 'SUPER_ADMIN'
         }
     })
 
     const user2 = await prisma.user.create({
         data: {
-            nome: 'Bob Dev',
+            nome: 'Bob Dev (User)',
             telefone_whatsapp: '5511888888888',
             email: 'bob@example.com',
-            avatar: 'https://i.pravatar.cc/150?u=bob'
+            avatar: 'https://i.pravatar.cc/150?u=bob',
+            role: 'USER'
         }
     })
 
@@ -38,10 +40,10 @@ async function main() {
     const team = await prisma.team.create({
         data: {
             nome: 'Alpha Squad',
-            admin_id: user1.id,
+            admin_id: superAdmin.id,
             members: {
                 create: [
-                    { user_id: user1.id },
+                    { user_id: superAdmin.id },
                     { user_id: user2.id }
                 ]
             }
@@ -54,7 +56,7 @@ async function main() {
             nome: 'Website Relaunch',
             team_id: team.id,
             cor: '#FF5733',
-            creator_id: user1.id
+            creator_id: superAdmin.id
         }
     })
 
@@ -66,7 +68,7 @@ async function main() {
             status: TaskStatus.EM_PROGRESSO,
             prioridade: TaskPriority.ALTA,
             prazo: new Date(new Date().setDate(new Date().getDate() + 2)), // 2 days from now
-            criador_id: user1.id,
+            criador_id: superAdmin.id,
             responsavel_id: user2.id,
             project_id: project.id,
             subtasks: {
@@ -77,7 +79,7 @@ async function main() {
             },
             comments: {
                 create: [
-                    { user_id: user1.id, texto: 'Please prioritize accessibility.' }
+                    { user_id: superAdmin.id, texto: 'Please prioritize accessibility.' }
                 ]
             }
         }
@@ -90,8 +92,8 @@ async function main() {
             status: TaskStatus.PENDENTE,
             prioridade: TaskPriority.MEDIA,
             prazo: new Date(new Date().setDate(new Date().getDate() + 5)),
-            criador_id: user1.id,
-            responsavel_id: user1.id,
+            criador_id: superAdmin.id,
+            responsavel_id: superAdmin.id,
             project_id: project.id
         }
     })
