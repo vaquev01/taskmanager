@@ -17,9 +17,7 @@ const WEB_VERSION_CACHE = {
     remotePath: 'https://raw.githubusercontent.com/nicaudinet/nicaudinet.github.io/refs/heads/main/client-info.json',
 };
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+// OpenAI client will be initialized lazily
 
 // Personas Configuration
 const PERSONAS: Record<string, string> = {
@@ -44,6 +42,16 @@ export class WhatsappService {
         this.taskService = new TaskService();
         this.ffmpegPath = path.join(__dirname, '..', 'bin', 'ffmpeg');
         // Client initialization moved to initialize() method
+    }
+
+    private getOpenAI() {
+        if (!process.env.OPENAI_API_KEY) {
+            console.warn('⚠️ OPENAI_API_KEY is missing. AI features will fail.');
+            return null;
+        }
+        return new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+        });
     }
 
     public async reload() {
@@ -313,6 +321,9 @@ export class WhatsappService {
     private async analyzeImage(media: any, user: any): Promise<any> {
         const base64Image = `data:${media.mimetype};base64,${media.data}`;
 
+        const openai = this.getOpenAI();
+        if (!openai) throw new Error('OpenAI key missing');
+
         const response = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
@@ -452,6 +463,10 @@ export class WhatsappService {
         fs.writeFileSync(inputPath, media.data, 'base64');
         try {
             await execPromise(`${this.ffmpegPath} -i ${inputPath} ${outputPath}`);
+
+            const openai = this.getOpenAI();
+            if (!openai) throw new Error('OpenAI key missing');
+
             const transcription = await openai.audio.transcriptions.create({
                 file: fs.createReadStream(outputPath),
                 model: 'whisper-1',
@@ -608,6 +623,12 @@ export class WhatsappService {
                         IMPORTANTE:
                         - Se detectar tarefas, mas faltar data em alguma, marque "date_missing": true nela.
                         `;
+
+            const openai = this.getOpenAI();
+            if (!openai) {
+                await msg.reply('⚠️ IA indisponível no momento (Chave de API ausente).');
+                return;
+            }
 
             const completion = await openai.chat.completions.create({
                 model: 'gpt-4o-mini',
