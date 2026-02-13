@@ -45,4 +45,4 @@ cmds = [
 ]
 
 [start]
-cmd = "npm start --prefix Backend"
+cmd = "export LD_LIBRARY_PATH=$(find /nix/store -name 'lib' -type d 2>/dev/null | tr '\\n' ':')$LD_LIBRARY_PATH && npm start --prefix Backend"
