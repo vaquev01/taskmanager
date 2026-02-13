@@ -17,16 +17,32 @@ const WEB_VERSION_CACHE = {
     remotePath: 'https://raw.githubusercontent.com/nicaudinet/nicaudinet.github.io/refs/heads/main/client-info.json',
 };
 
-// Find Chromium binary — only use CHROME_BIN if explicitly set,
-// otherwise let Puppeteer use its own cached Chrome
+// Find Chromium binary — use CHROME_BIN, or find via PATH, or let Puppeteer default
 function findChromiumPath(): string | undefined {
     const chromeBin = process.env.CHROME_BIN;
     if (chromeBin && chromeBin.trim() !== '') {
-        console.log(`✅ Using CHROME_BIN: ${chromeBin}`);
-        return chromeBin;
+        try {
+            const resolved = fs.realpathSync(chromeBin);
+            console.log(`✅ Using CHROME_BIN: ${chromeBin} (resolved: ${resolved})`);
+            return chromeBin;
+        } catch (e) {
+            console.log(`✅ Using CHROME_BIN: ${chromeBin}`);
+            return chromeBin;
+        }
     }
-    // Return undefined so Puppeteer uses its own downloaded Chrome
-    console.log('ℹ️ No CHROME_BIN set, using Puppeteer default Chrome cache');
+
+    // Try to find chromium in PATH (for Nix environments)
+    if (process.platform === 'linux') {
+        try {
+            const result = execSync('which chromium 2>/dev/null || which chromium-browser 2>/dev/null', { encoding: 'utf-8' }).trim();
+            if (result) {
+                console.log(`✅ Found Chromium in PATH: ${result}`);
+                return result;
+            }
+        } catch (e) { /* not found */ }
+    }
+
+    console.log('ℹ️ No Chromium found, using Puppeteer default Chrome cache');
     return undefined;
 }
 

@@ -1,32 +1,8 @@
 [phases.setup]
-nixPkgs = [
-    "nodejs",
-    "ffmpeg",
-    "nss",
-    "nspr",
-    "at-spi2-atk",
-    "cups",
-    "libdrm",
-    "libxkbcommon",
-    "mesa",
-    "pango",
-    "cairo",
-    "dbus",
-    "alsa-lib",
-    "xorg.libX11",
-    "xorg.libXcomposite",
-    "xorg.libXdamage",
-    "xorg.libXext",
-    "xorg.libXfixes",
-    "xorg.libXrandr",
-    "xorg.libxcb",
-    "gtk3",
-    "glib",
-    "expat"
-]
+nixPkgs = ["nodejs", "chromium", "ffmpeg"]
 
 [variables]
-CHROME_BIN = ""
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
 NPM_CONFIG_PRODUCTION = "false"
 PRISMA_ENGINES_MIRROR = "https://binaries.prisma.sh"
 
@@ -34,7 +10,6 @@ PRISMA_ENGINES_MIRROR = "https://binaries.prisma.sh"
 cmds = [
     "npm install --prefix Frontend",
     "npm install --prefix Backend --ignore-scripts",
-    "node Backend/node_modules/puppeteer/install.mjs || echo 'Puppeteer install skipped'",
     "npm run generate --prefix Backend"
 ]
 
@@ -45,4 +20,4 @@ cmds = [
 ]
 
 [start]
-cmd = "export LD_LIBRARY_PATH=$(find /nix/store -name 'lib' -type d 2>/dev/null | tr '\\n' ':')$LD_LIBRARY_PATH && npm start --prefix Backend"
+cmd = "export CHROME_BIN=$(which chromium 2>/dev/null || which chromium-browser 2>/dev/null || echo '') && npm start --prefix Backend"
