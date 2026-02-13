@@ -17,44 +17,16 @@ const WEB_VERSION_CACHE = {
     remotePath: 'https://raw.githubusercontent.com/nicaudinet/nicaudinet.github.io/refs/heads/main/client-info.json',
 };
 
-// Find Chromium binary in the system (Nix, apt, snap, etc.)
+// Find Chromium binary — only use CHROME_BIN if explicitly set,
+// otherwise let Puppeteer use its own cached Chrome
 function findChromiumPath(): string | undefined {
-    if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
-    if (process.platform !== 'linux') return undefined;
-
-    // Try 'which' first to find it in PATH
-    try {
-        const result = execSync('which chromium || which chromium-browser || which google-chrome-stable || which google-chrome', { encoding: 'utf-8' }).trim();
-        if (result) {
-            console.log(`✅ Found Chromium at: ${result}`);
-            return result;
-        }
-    } catch (e) { /* not in PATH */ }
-
-    // Try common Nix/Linux paths
-    const commonPaths = [
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/google-chrome-stable',
-        '/usr/bin/google-chrome',
-    ];
-    for (const p of commonPaths) {
-        if (fs.existsSync(p)) {
-            console.log(`✅ Found Chromium at: ${p}`);
-            return p;
-        }
+    const chromeBin = process.env.CHROME_BIN;
+    if (chromeBin && chromeBin.trim() !== '') {
+        console.log(`✅ Using CHROME_BIN: ${chromeBin}`);
+        return chromeBin;
     }
-
-    // Search in Nix store
-    try {
-        const nixResult = execSync('find /nix/store -name chromium -type f -executable 2>/dev/null | head -1', { encoding: 'utf-8' }).trim();
-        if (nixResult) {
-            console.log(`✅ Found Chromium in Nix store: ${nixResult}`);
-            return nixResult;
-        }
-    } catch (e) { /* nix not available */ }
-
-    console.warn('⚠️ Could not find Chromium binary. WhatsApp will not work.');
+    // Return undefined so Puppeteer uses its own downloaded Chrome
+    console.log('ℹ️ No CHROME_BIN set, using Puppeteer default Chrome cache');
     return undefined;
 }
 

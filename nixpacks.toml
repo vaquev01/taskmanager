@@ -1,17 +1,15 @@
 [phases.setup]
-nixPkgs = ["nodejs", "chromium", "ffmpeg"]
+nixPkgs = ["nodejs", "ffmpeg"]
 
 [variables]
-PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
-CHROME_BIN = "/usr/bin/chromium-browser"
+CHROME_BIN = ""
 NPM_CONFIG_PRODUCTION = "false"
 PRISMA_ENGINES_MIRROR = "https://binaries.prisma.sh"
 
 [phases.install]
 cmds = [
     "npm install --prefix Frontend",
-    "npm install --prefix Backend --ignore-scripts",
-    "npm run generate --prefix Backend"
+    "npm install --prefix Backend"
 ]
 
 [phases.build]
