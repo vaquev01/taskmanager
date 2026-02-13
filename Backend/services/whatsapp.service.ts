@@ -7,7 +7,7 @@ import { TaskPriority, TaskStatus } from '@prisma/client';
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
 import util from 'util';
 
 const execPromise = util.promisify(exec);
@@ -16,6 +16,47 @@ const WEB_VERSION_CACHE = {
     type: 'remote' as const,
     remotePath: 'https://raw.githubusercontent.com/nicaudinet/nicaudinet.github.io/refs/heads/main/client-info.json',
 };
+
+// Find Chromium binary in the system (Nix, apt, snap, etc.)
+function findChromiumPath(): string | undefined {
+    if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
+    if (process.platform !== 'linux') return undefined;
+
+    // Try 'which' first to find it in PATH
+    try {
+        const result = execSync('which chromium || which chromium-browser || which google-chrome-stable || which google-chrome', { encoding: 'utf-8' }).trim();
+        if (result) {
+            console.log(`✅ Found Chromium at: ${result}`);
+            return result;
+        }
+    } catch (e) { /* not in PATH */ }
+
+    // Try common Nix/Linux paths
+    const commonPaths = [
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome',
+    ];
+    for (const p of commonPaths) {
+        if (fs.existsSync(p)) {
+            console.log(`✅ Found Chromium at: ${p}`);
+            return p;
+        }
+    }
+
+    // Search in Nix store
+    try {
+        const nixResult = execSync('find /nix/store -name chromium -type f -executable 2>/dev/null | head -1', { encoding: 'utf-8' }).trim();
+        if (nixResult) {
+            console.log(`✅ Found Chromium in Nix store: ${nixResult}`);
+            return nixResult;
+        }
+    } catch (e) { /* nix not available */ }
+
+    console.warn('⚠️ Could not find Chromium binary. WhatsApp will not work.');
+    return undefined;
+}
 
 // OpenAI client will be initialized lazily
 
@@ -62,12 +103,15 @@ export class WhatsappService {
             console.error('Error destroying client:', e);
         }
 
+        const chromiumPath = findChromiumPath();
+
         this.client = new Client({
             authStrategy: new LocalAuth(),
             webVersionCache: WEB_VERSION_CACHE,
             puppeteer: {
                 headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
+                executablePath: chromiumPath
             }
         });
         this.initializeEvents();
@@ -128,6 +172,9 @@ export class WhatsappService {
     public async initialize() {
         console.log('🔄 Initializing WhatsApp Client...');
 
+        const chromiumPath = findChromiumPath();
+        console.log(`🔍 Chromium path: ${chromiumPath || 'NOT FOUND'}`);
+
         try {
             this.client = new Client({
                 authStrategy: new LocalAuth(),
@@ -135,7 +182,7 @@ export class WhatsappService {
                 puppeteer: {
                     headless: true,
                     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
-                    executablePath: process.env.CHROME_BIN || (process.platform === 'linux' ? 'chromium' : undefined)
+                    executablePath: chromiumPath
                 }
             });
 
