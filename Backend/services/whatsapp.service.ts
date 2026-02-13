@@ -13,8 +13,7 @@ import util from 'util';
 const execPromise = util.promisify(exec);
 
 const WEB_VERSION_CACHE = {
-    type: 'remote' as const,
-    remotePath: 'https://raw.githubusercontent.com/nicaudinet/nicaudinet.github.io/refs/heads/main/client-info.json',
+    type: 'none' as const,
 };
 
 // Find Chromium binary — use CHROME_BIN, or find via PATH, or let Puppeteer default
@@ -98,7 +97,15 @@ export class WhatsappService {
             webVersionCache: WEB_VERSION_CACHE,
             puppeteer: {
                 headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-gpu',
+                    '--disable-dev-shm-usage',
+                    '--single-process',
+                    '--disable-extensions',
+                    '--no-zygote'
+                ],
                 executablePath: chromiumPath
             }
         });
@@ -124,6 +131,7 @@ export class WhatsappService {
         });
 
         this.client.on('authenticated', () => {
+            console.log('🔑 WhatsApp Client Authenticated!');
             this.isReady = true;
             this.qrCode = null;
         });
@@ -169,7 +177,15 @@ export class WhatsappService {
                 webVersionCache: WEB_VERSION_CACHE,
                 puppeteer: {
                     headless: true,
-                    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
+                    args: [
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-gpu',
+                        '--disable-dev-shm-usage',
+                        '--single-process',
+                        '--disable-extensions',
+                        '--no-zygote'
+                    ],
                     executablePath: chromiumPath
                 }
             });
