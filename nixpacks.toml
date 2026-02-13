@@ -10,12 +10,12 @@ PRISMA_ENGINES_MIRROR = "https://binaries.prisma.sh"
 [phases.install]
 cmds = [
     "npm install --prefix Frontend",
-    "npm install --prefix Backend --ignore-scripts"
+    "npm install --prefix Backend --ignore-scripts",
+    "npm run generate --prefix Backend"
 ]
 
 [phases.build]
 cmds = [
-    "cd Backend && npx prisma generate --schema=../Database/schema.prisma",
     "npm run build --prefix Frontend",
     "npm run build --prefix Backend"
 ]
