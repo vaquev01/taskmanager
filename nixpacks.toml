@@ -1,5 +1,29 @@
 [phases.setup]
-nixPkgs = ["nodejs", "ffmpeg"]
+nixPkgs = [
+    "nodejs",
+    "ffmpeg",
+    "nss",
+    "nspr",
+    "at-spi2-atk",
+    "cups",
+    "libdrm",
+    "libxkbcommon",
+    "mesa",
+    "pango",
+    "cairo",
+    "dbus",
+    "alsa-lib",
+    "xorg.libX11",
+    "xorg.libXcomposite",
+    "xorg.libXdamage",
+    "xorg.libXext",
+    "xorg.libXfixes",
+    "xorg.libXrandr",
+    "xorg.libxcb",
+    "gtk3",
+    "glib",
+    "expat"
+]
 
 [variables]
 CHROME_BIN = ""
