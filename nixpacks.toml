@@ -33,7 +33,9 @@ PRISMA_ENGINES_MIRROR = "https://binaries.prisma.sh"
 [phases.install]
 cmds = [
     "npm install --prefix Frontend",
-    "npm install --prefix Backend"
+    "npm install --prefix Backend --ignore-scripts",
+    "node Backend/node_modules/puppeteer/install.mjs || echo 'Puppeteer install skipped'",
+    "npm run generate --prefix Backend"
 ]
 
 [phases.build]
