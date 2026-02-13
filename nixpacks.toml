@@ -4,20 +4,21 @@ nixPkgs = ["nodejs", "chromium", "ffmpeg"]
 [variables]
 PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
 CHROME_BIN = "/usr/bin/chromium-browser"
-NPM_CONFIG_PRODUCTION = "false" 
-# Note: In Nixpacks/Alpine/some distros it varies, but defining it helps. 
-# However, relying on PATH is safer if we can. 
-# Let's simple enable Chromium. Nix usually links it.
-# Getting usage path dynamically is harder in TOML.
-# Let's try without forcing CHROME_BIN path first, or use a command to find it.
-
-
+NPM_CONFIG_PRODUCTION = "false"
+PRISMA_ENGINES_MIRROR = "https://binaries.prisma.sh"
 
 [phases.install]
-cmds = ["npm install"]
+cmds = [
+    "npm install --prefix Frontend",
+    "npm install --prefix Backend --ignore-scripts"
+]
 
 [phases.build]
-cmds = ["npm run generate --prefix Backend", "npm run build"]
+cmds = [
+    "cd Backend && npx prisma generate --schema=../Database/schema.prisma",
+    "npm run build --prefix Frontend",
+    "npm run build --prefix Backend"
+]
 
 [start]
-cmd = "npm start"
+cmd = "npm start --prefix Backend"
