@@ -5,12 +5,12 @@
     "scripts": {
         "dev": "tsx watch server.ts",
         "build": "tsc",
-        "start": "node dist/server.js",
+        "start": "prisma generate --schema=../Database/schema.prisma && prisma db push --schema=../Database/schema.prisma && node dist/server.js",
         "postinstall": "prisma generate --schema=../Database/schema.prisma",
         "generate": "prisma generate --schema=../Database/schema.prisma"
     },
     "dependencies": {
-        "@prisma/client": "^5.10.0",
+        "@prisma/client": "5.22.0",
         "@types/fluent-ffmpeg": "^2.1.28",
         "axios": "^1.13.5",
         "cors": "^2.8.5",
@@ -33,7 +33,7 @@
         "@types/morgan": "^1.9.9",
         "@types/node": "^20.11.0",
         "@types/node-cron": "^3.0.11",
-        "prisma": "^5.10.0",
+        "prisma": "5.22.0",
         "tsx": "^4.7.0",
         "typescript": "^5.3.3"
     }

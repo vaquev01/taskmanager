@@ -16,7 +16,6 @@ cmds = [
 [phases.build]
 cmds = [
     "cd Backend && npx prisma generate --schema=../Database/schema.prisma",
-    "cd Backend && npx prisma db push --schema=../Database/schema.prisma --accept-data-loss",
     "npm run build --prefix Frontend",
     "npm run build --prefix Backend"
 ]
