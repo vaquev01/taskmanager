@@ -68,7 +68,10 @@ export class WhatsappService {
 
     constructor() {
         this.taskService = new TaskService();
-        this.ffmpegPath = path.join(__dirname, '..', 'bin', 'ffmpeg');
+        // Use local bin/ffmpeg if it exists, otherwise use system ffmpeg (Nix on Railway)
+        const localFfmpeg = path.join(__dirname, '..', 'bin', 'ffmpeg');
+        this.ffmpegPath = fs.existsSync(localFfmpeg) ? localFfmpeg : 'ffmpeg';
+        console.log(`🎬 ffmpeg path: ${this.ffmpegPath}`);
         // Client initialization moved to initialize() method
     }
 
