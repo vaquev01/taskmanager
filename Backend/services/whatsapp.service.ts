@@ -13,7 +13,7 @@ import util from 'util';
 const execPromise = util.promisify(exec);
 
 const WEB_VERSION_CACHE = {
-    type: 'none' as const,
+    type: 'local' as const,
 };
 
 // Find Chromium binary — use CHROME_BIN, or find via PATH, or let Puppeteer default
@@ -98,6 +98,7 @@ export class WhatsappService {
         this.client = new Client({
             authStrategy: new LocalAuth(),
             webVersionCache: WEB_VERSION_CACHE,
+            authTimeoutMs: 120000,
             puppeteer: {
                 headless: true,
                 args: [
@@ -135,8 +136,15 @@ export class WhatsappService {
 
         this.client.on('authenticated', () => {
             console.log('🔑 WhatsApp Client Authenticated!');
-            this.isReady = true;
             this.qrCode = null;
+        });
+
+        this.client.on('loading_screen', (percent: number, message: string) => {
+            console.log(`⏳ Loading: ${percent}% - ${message}`);
+        });
+
+        this.client.on('change_state', (state: string) => {
+            console.log(`🔄 State changed: ${state}`);
         });
 
         this.client.on('disconnected', (reason) => {
@@ -178,6 +186,7 @@ export class WhatsappService {
             this.client = new Client({
                 authStrategy: new LocalAuth(),
                 webVersionCache: WEB_VERSION_CACHE,
+                authTimeoutMs: 120000,
                 puppeteer: {
                     headless: true,
                     args: [
