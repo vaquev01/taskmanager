@@ -16,6 +16,8 @@ cmds = [
 [phases.build]
 cmds = [
     "npm run build --prefix Frontend",
+    "mkdir -p Backend/public",
+    "cp -r Frontend/dist/* Backend/public/",
     "npm run build --prefix Backend"
 ]
 

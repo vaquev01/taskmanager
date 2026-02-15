@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
-import { Clock, Bell, Trash2, Save, Sparkles, Wifi, WifiOff } from 'lucide-react';
+import { Clock, Bell, Trash2, Save, Sparkles, Wifi, WifiOff, FileText, Download } from 'lucide-react';
 import api from '../lib/api';
 
 interface Reminder {
@@ -68,6 +68,21 @@ export function SettingsPage() {
             setReminders(reminders.filter(r => r.id !== id));
         } catch (e) {
             alert('Erro ao excluir lembrete');
+        }
+    };
+
+    const handleDownloadReport = async () => {
+        try {
+            const response = await api.get('/reports/tasks/csv', { responseType: 'blob' });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'relatorio-tarefas.csv');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            alert('Erro ao baixar relatório');
         }
     };
 
@@ -168,6 +183,29 @@ export function SettingsPage() {
                             O bot está offline. Verifique o backend ou escaneie o QR Code novamente.
                         </div>
                     )}
+                </div>
+
+                {/* Data Export */}
+                <div className="glass-card p-6 h-fit">
+                    <h2 className="text-lg font-bold text-[var(--text-main)] mb-6 flex items-center gap-2">
+                        <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            <FileText size={16} />
+                        </div>
+                        Exportar Dados
+                    </h2>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-[var(--text-main)] font-medium">Relatório de Tarefas</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-1">Baixe suas tarefas em CSV.</p>
+                        </div>
+                        <button
+                            onClick={handleDownloadReport}
+                            className="bg-[var(--glass-surface-hover)] border border-[var(--glass-border)] hover:bg-[var(--glass-border)] text-[var(--text-main)] p-2.5 rounded-xl transition-colors"
+                            title="Baixar CSV"
+                        >
+                            <Download size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Reminders Dashboard */}

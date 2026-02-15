@@ -9,3 +9,5 @@ coverage/
 .wwebjs_cache/
 *.db
 *.db-journal
+Database/.env.bak
+Backend/.env

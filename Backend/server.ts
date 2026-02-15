@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 import apiRoutes from './routes';
 import adminRoutes from './routes/admin.routes';
 import { WhatsappService } from './services/whatsapp.service';
@@ -15,10 +17,40 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // Middleware
+import rateLimit from 'express-rate-limit';
+import authRoutes from './routes/auth.routes';
+import analyticsRoutes from './routes/analytics.routes';
+import searchRoutes from './routes/search.routes';
+import notificationsRoutes from './routes/notifications.routes';
+import reportsRoutes from './routes/reports.routes';
+import { errorHandler } from './middleware/error.middleware';
+
+// ... (imports)
+
+// Middleware
+app.set('trust proxy', 1); // Trust proxy for rate limiter behind load balancers (Railway)
 app.use(helmet());
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
+
+// Rate Limiter
+const globalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Muitas requisições, tente novamente mais tarde.' }
+});
+app.use('/api', globalLimiter);
+
+// Specific Auth Limiter
+const authLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 20, // 20 login attempts per hour
+    message: { error: 'Muitas tentativas de login, tente novamente em 1 hora.' }
+});
+app.use('/api/auth/login', authLimiter);
 
 // Initialize Services
 console.log('🔄 Initializing Services...');
@@ -30,23 +62,41 @@ export function getWhatsappService() { return whatsappService; }
 
 // Routes
 console.log('🔄 Setting up Routes...');
+app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/whatsapp', whatsappRouter(whatsappService));
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/notifications', notificationsRoutes);
+app.use('/api/reports', reportsRoutes);
 app.use('/api', apiRoutes); // General API routes last
+
+// Error Handler (Must be last)
+app.use(errorHandler);
 
 // Health Check
 app.get('/health', (req, res) => {
     res.json({ message: 'TaskFlow API is running 🚀', timestamp: new Date(), whatsapp: whatsappService.isReady ? 'CONNECTED' : 'DISCONNECTED' });
 });
 
-// Serve Frontend (After API routes)
-import path from 'path';
-const frontendPath = path.join(__dirname, '../../Frontend/dist');
-app.use(express.static(frontendPath));
+// Serve Static Frontend (Production)
+// In production (built), __dirname is '.../Backend/dist'
+// We copied frontend to '.../Backend/public'
+const prodPublicPath = path.join(__dirname, '../public');
+const devPublicPath = path.join(__dirname, '../../Frontend/dist'); // Fallback for local testing if not copied
 
-app.get('*', (req, res) => {
-    res.sendFile(path.join(frontendPath, 'index.html'));
-});
+const finalPublicPath = fs.existsSync(prodPublicPath) ? prodPublicPath : devPublicPath;
+
+if (fs.existsSync(finalPublicPath)) {
+    console.log(`📂 Serving static files from: ${finalPublicPath}`);
+    app.use(express.static(finalPublicPath));
+
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(finalPublicPath, 'index.html'));
+    });
+} else {
+    console.log('⚠️ Static frontend not found. API Mode only.');
+}
 
 import { prisma } from './lib/prisma';
 

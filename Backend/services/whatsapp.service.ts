@@ -917,8 +917,28 @@ IMPORTANTE:
                 return msg.reply(`⚠️ Equipe "${teamName}" já existe!`);
             }
 
-            await prisma.team.create({ data: { nome: teamName } });
-            await msg.reply(`✅ Equipe *${teamName}* criada!\n\nPara adicionar membros:\n"add membro Nome, Tel, equipe ${teamName}"\n"mover membro Nome para equipe ${teamName}"`);
+            // Fix: Need an admin to create a team.
+            const contact = await msg.getContact();
+            const senderNumber = contact.number;
+
+            let adminUser = await prisma.user.findUnique({ where: { telefone_whatsapp: senderNumber } });
+
+            if (!adminUser) {
+                // Fallback: Try to find any admin
+                adminUser = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
+            }
+
+            if (!adminUser) {
+                return msg.reply('❌ Você precisa estar cadastrado ou haver um admin no sistema para criar equipes.');
+            }
+
+            await prisma.team.create({
+                data: {
+                    nome: teamName,
+                    admin_id: adminUser.id
+                }
+            });
+            await msg.reply(`✅ Equipe *${teamName}* criada!\nAdmin: ${adminUser.nome}\n\nPara adicionar membros:\n"add membro Nome, Tel, equipe ${teamName}"`);
         } catch (e) {
             await msg.reply('❌ Erro ao criar equipe.');
         }

@@ -15,7 +15,8 @@ export interface User {
 
 interface AppState {
     user: User | null
-    setUser: (user: User | null) => void
+    token: string | null
+    setUser: (user: User | null, token?: string | null) => void
     logout: () => void
     isAuthenticated: boolean
     theme: 'dark' | 'light'
@@ -27,11 +28,15 @@ export const useStore = create<AppState>()(
     persist(
         (set) => ({
             user: null,
+            token: null,
             isAuthenticated: false,
             theme: 'dark',
             _hasHydrated: false,
-            setUser: (user) => set({ user, isAuthenticated: !!user }),
-            logout: () => set({ user: null, isAuthenticated: false }),
+            setUser: (user, token) => set({ user, token, isAuthenticated: !!user }),
+            logout: () => {
+                localStorage.removeItem('token'); // Clear legacy if any
+                set({ user: null, token: null, isAuthenticated: false });
+            },
             toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
         }),
         {

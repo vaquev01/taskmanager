@@ -1,0 +1,38 @@
+{
+    "common": {
+        "dashboard": "Dashboard",
+        "tasks": "Tarefas",
+        "calendar": "Calendário",
+        "team": "Equipe",
+        "settings": "Configurações",
+        "logout": "Sair",
+        "search": "Buscar...",
+        "loading": "Carregando...",
+        "error": "Erro",
+        "success": "Sucesso",
+        "save": "Salvar",
+        "cancel": "Cancelar",
+        "delete": "Excluir",
+        "edit": "Editar",
+        "create": "Criar",
+        "back": "Voltar"
+    },
+    "status": {
+        "pending": "Pendente",
+        "in_progress": "Em Progresso",
+        "completed": "Concluída"
+    },
+    "priority": {
+        "low": "Baixa",
+        "medium": "Média",
+        "high": "Alta"
+    },
+    "dashboard": {
+        "welcome": "Bem-vindo de volta",
+        "productivity_weekly": "Produtividade Semanal",
+        "distribution": "Distribuição por Prioridade",
+        "tasks_completed": "Tarefas Concluídas",
+        "tasks_pending": "Tarefas Pendentes",
+        "tasks_overdue": "Tarefas Atrasadas"
+    }
+}

@@ -1,0 +1,38 @@
+{
+    "common": {
+        "dashboard": "Dashboard",
+        "tasks": "Tasks",
+        "calendar": "Calendar",
+        "team": "Team",
+        "settings": "Settings",
+        "logout": "Logout",
+        "search": "Search...",
+        "loading": "Loading...",
+        "error": "Error",
+        "success": "Success",
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "edit": "Edit",
+        "create": "Create",
+        "back": "Back"
+    },
+    "status": {
+        "pending": "Pending",
+        "in_progress": "In Progress",
+        "completed": "Completed"
+    },
+    "priority": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+    },
+    "dashboard": {
+        "welcome": "Welcome back",
+        "productivity_weekly": "Weekly Productivity",
+        "distribution": "Priority Distribution",
+        "tasks_completed": "Tasks Completed",
+        "tasks_pending": "Pending Tasks",
+        "tasks_overdue": "Overdue Tasks"
+    }
+}

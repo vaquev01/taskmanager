@@ -1,48 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import type { User } from '../store/useStore';
 import api from '../lib/api';
-import { Zap, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { Zap, Sparkles, Loader2, Lock, User, AlertCircle } from 'lucide-react';
 
 export const LoginPage = () => {
-    const [users, setUsers] = useState<User[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const { setUser, isAuthenticated } = useStore();
+    const [identifier, setIdentifier] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const { setUser } = useStore();
     const navigate = useNavigate();
 
-    const [isMasterLogin, setIsMasterLogin] = useState(false);
-    const [credentials, setCredentials] = useState({ username: '', password: '' });
-
-    useEffect(() => {
-        // Auto-redirect disabled to allow profile management
-        // if (isAuthenticated) { navigate('/dashboard'); return; }
-        api.get('/users')
-            .then(res => setUsers(res.data))
-            .catch(console.error)
-            .finally(() => setLoading(false));
-    }, []);
-
-    const handleLogin = (user: User) => {
-        setSelectedId(user.id);
-        setTimeout(() => {
-            setUser(user);
-            navigate('/dashboard');
-        }, 400);
-    };
-
-    const handleMasterLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (credentials.username === 'wardogs' && credentials.password === 'wardogs') {
-            const masterUser = users.find(u => u.nome === 'Wardogs' || u.role === 'SUPER_ADMIN');
-            if (masterUser) {
-                handleLogin(masterUser);
-            } else {
-                alert('Usuário Master não encontrado no banco de dados. Execute o seed.');
-            }
-        } else {
-            alert('Credenciais Inválidas');
+        setError('');
+        setLoading(true);
+
+        try {
+            const { data } = await api.post('/auth/login', { identifier, password });
+            setUser(data.user, data.token);
+            navigate('/dashboard');
+        } catch (err: any) {
+            setError(err.response?.data?.error || 'Falha ao fazer login');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -54,9 +37,9 @@ export const LoginPage = () => {
                 <div className="absolute bottom-1/4 right-1/3 w-[400px] h-[400px] bg-cyan-500/8 rounded-full blur-[100px]" />
             </div>
 
-            <div className="relative z-10 w-full max-w-lg">
+            <div className="relative z-10 w-full max-w-md">
                 {/* Logo */}
-                <div className="text-center mb-12">
+                <div className="text-center mb-10">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 via-purple-500 to-cyan-400 mb-6 shadow-2xl shadow-violet-500/30">
                         <Zap size={32} fill="white" strokeWidth={0} className="text-white" />
                     </div>
@@ -65,107 +48,71 @@ export const LoginPage = () => {
                     </h1>
                     <p className="text-[var(--text-muted)] text-sm flex items-center justify-center gap-1.5">
                         <Sparkles size={14} className="text-violet-400" />
-                        Selecione seu perfil para continuar
+                        Ambiente Seguro
                     </p>
                 </div>
 
-                {isMasterLogin ? (
-                    <form onSubmit={handleMasterLogin} className="glass-card p-8 space-y-6">
-                        <div className="text-center mb-4">
-                            <h2 className="text-2xl font-bold">Acesso Master</h2>
-                            <p className="text-sm text-slate-400">Entre com credenciais administrativas</p>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-2 text-slate-300">Usuário</label>
-                            <input
-                                type="text"
-                                className="w-full p-3 rounded-lg bg-slate-900/50 border border-slate-700 text-white focus:ring-2 focus:ring-purple-500 outline-none"
-                                value={credentials.username}
-                                onChange={e => setCredentials({ ...credentials, username: e.target.value })}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-2 text-slate-300">Senha</label>
-                            <input
-                                type="password"
-                                className="w-full p-3 rounded-lg bg-slate-900/50 border border-slate-700 text-white focus:ring-2 focus:ring-purple-500 outline-none"
-                                value={credentials.password}
-                                onChange={e => setCredentials({ ...credentials, password: e.target.value })}
-                            />
-                        </div>
-                        <button type="submit" className="w-full py-3 bg-purple-600 hover:bg-purple-500 rounded-lg text-white font-bold transition-all">
-                            Entrar
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setIsMasterLogin(false)}
-                            className="w-full text-center text-sm text-slate-500 hover:text-slate-300 mt-4"
-                        >
-                            Voltar para seleção de perfil
-                        </button>
-                    </form>
-                ) : (
-                    <>
-                        {/* User Cards */}
-                        {loading ? (
-                            <div className="flex justify-center py-12">
-                                <Loader2 size={32} className="animate-spin text-violet-400" />
-                            </div>
-                        ) : users.length === 0 ? (
-                            <div className="glass-card p-8 text-center">
-                                <p className="text-[var(--text-muted)] mb-2">Nenhum usuário encontrado.</p>
-                                <p className="text-sm text-[var(--text-dim)]">Execute o seed do banco de dados primeiro.</p>
-                            </div>
-                        ) : (
-                            <div className="flex flex-col gap-3">
-                                {users.filter(u => u.role !== 'SUPER_ADMIN').map((user) => (
-                                    <button
-                                        key={user.id}
-                                        onClick={() => handleLogin(user)}
-                                        disabled={selectedId !== null}
-                                        className={`
-                                        group w-full p-5 rounded-2xl border transition-all duration-300 text-left
-                                        flex items-center gap-4
-                                        ${selectedId === user.id
-                                                ? 'bg-gradient-to-r from-violet-500/20 to-cyan-500/10 border-violet-500/40 scale-[0.98]'
-                                                : 'bg-[var(--glass-surface)] border-[var(--glass-border)] hover:border-violet-500/30 hover:bg-[var(--glass-surface-hover)] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-violet-500/5'
-                                            }
-                                    `}
-                                    >
-                                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-600 to-cyan-500 flex items-center justify-center text-lg font-bold text-white shadow-lg overflow-hidden shrink-0">
-                                            {user.avatar ? (
-                                                <img src={user.avatar} alt={user.nome} className="w-full h-full object-cover" />
-                                            ) : (
-                                                user.nome.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-                                            )}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="font-semibold text-[var(--text-main)] text-lg truncate">{user.nome}</div>
-                                            <div className="text-sm text-[var(--text-muted)] truncate">{user.email || user.telefone_whatsapp}</div>
-                                        </div>
-                                        <ArrowRight size={20} className={`
-                                        text-[var(--text-dim)] transition-all
-                                        ${selectedId === user.id ? 'text-violet-400 translate-x-1' : 'group-hover:text-violet-400 group-hover:translate-x-1'}
-                                    `} />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
+                <form onSubmit={handleLogin} className="glass-card p-8 space-y-6">
+                    <div className="text-center mb-2">
+                        <h2 className="text-xl font-bold text-[var(--text-main)]">Bem-vindo de volta</h2>
+                        <p className="text-sm text-[var(--text-muted)]">Entre com suas credenciais</p>
+                    </div>
 
-                        <div className="mt-8 flex justify-center">
-                            <button
-                                onClick={() => setIsMasterLogin(true)}
-                                className="text-white/30 hover:text-white/80 text-xs transition-colors"
-                            >
-                                Área Restrita (Master)
-                            </button>
+                    {error && (
+                        <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm flex items-center gap-2">
+                            <AlertCircle size={16} />
+                            {error}
                         </div>
-                    </>
-                )}
+                    )}
+
+                    <div className="space-y-4">
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider">Email ou WhatsApp</label>
+                            <div className="relative">
+                                <User className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" size={18} />
+                                <input
+                                    type="text"
+                                    value={identifier}
+                                    onChange={(e) => setIdentifier(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-3 bg-black/20 border border-[var(--glass-border)] rounded-xl focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 outline-none text-[var(--text-main)] placeholder:text-[var(--text-dim)] transition-all"
+                                    placeholder="seu@email.com"
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider">Senha</label>
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" size={18} />
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-3 bg-black/20 border border-[var(--glass-border)] rounded-xl focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 outline-none text-[var(--text-main)] placeholder:text-[var(--text-dim)] transition-all"
+                                    placeholder="••••••••"
+                                    required
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="btn btn-primary w-full py-3 text-base justify-center shadow-lg shadow-violet-500/20"
+                    >
+                        {loading ? <Loader2 size={20} className="animate-spin" /> : 'Entrar'}
+                    </button>
+
+                    <p className="text-center text-xs text-[var(--text-dim)] mt-6">
+                        Esqueceu sua senha? Contate o administrador.
+                    </p>
+                </form>
 
                 {/* Footer */}
-                <p className="text-center text-xs text-[var(--text-dim)] mt-10">
-                    TaskFlow v1.0 · Task Management + WhatsApp Integration
+                <p className="text-center text-xs text-[var(--text-dim)] mt-10 opacity-50">
+                    TaskFlow v2.0 · Security Update
                 </p>
             </div>
         </div>

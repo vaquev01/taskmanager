@@ -35,6 +35,7 @@ model User {
   nome              String
   telefone_whatsapp String   @unique
   email             String?  @unique
+  password_hash     String?  // New: For JWT auth
   avatar            String?
   timezone          String   @default("America/Sao_Paulo")
   persona           String?  @default("DEFAULT")

@@ -27,6 +27,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+import { CommandMenu } from './components/CommandMenu';
+import { OnboardingTour } from './components/OnboardingTour';
+import api from './lib/api';
+
+// ... imports
+
 function App() {
   const { theme } = useStore();
 
@@ -34,6 +40,34 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Register Service Worker for Push
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      const registerSW = async () => {
+        try {
+          const register = await navigator.serviceWorker.register('/sw.js');
+          console.log('SW Registered');
+
+          // Request permission
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+            const subscription = await register.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: 'BJmCsWmcExysXP0fCDSFO4zpqr_BN3HrcGpIU8OPU5LNqzugsuCDGFbnHmBHdlJpy9meXDsykhvR7QabwNoCXbs' // Public Key
+            });
+
+            // Send to backend
+            await api.post('/notifications/subscribe', subscription);
+            console.log('Push Subscribed');
+          }
+        } catch (e) {
+          console.error('SW Error:', e);
+        }
+      };
+      registerSW();
+    }
+  }, []);
 
   // Initialize AdMob
   useEffect(() => {
@@ -53,6 +87,8 @@ function App() {
 
   return (
     <ErrorBoundary>
+      <CommandMenu />
+      <OnboardingTour />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />

@@ -10,6 +10,7 @@ import { EmptyState } from '../components/EmptyState';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ConnectWhatsapp } from '../components/ConnectWhatsapp';
 import { KanbanColumn } from '../components/KanbanColumn';
+import { StatsCharts } from '../components/StatsCharts';
 import { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { useToastStore } from '../store/useToastStore';
@@ -244,7 +245,6 @@ export const Dashboard = () => {
                 </div>
             </header>
 
-            {/* Stats */}
             <StatsGrid
                 tasks={tasks}
                 completedCount={completedCount}
@@ -253,6 +253,9 @@ export const Dashboard = () => {
                 waStatus={waStatus}
                 restartWhatsappMutation={restartWhatsappMutation}
             />
+
+            {/* Visual Analytics */}
+            <StatsCharts />
 
             {/* Tasks Area */}
             <div className="flex flex-col xl:flex-row gap-8 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
