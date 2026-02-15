@@ -34,7 +34,7 @@ import api from './lib/api';
 // ... imports
 
 function App() {
-  const { theme } = useStore();
+  const { theme, isAuthenticated } = useStore();
 
   // Sync theme to DOM
   useEffect(() => {
@@ -90,16 +90,23 @@ function App() {
       <CommandMenu />
       <OnboardingTour />
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<LoginPage />} />
+        {/* Public Routes */}
+        <Route path="/" element={
+          isAuthenticated ? <Navigate to="/dashboard" replace /> : <LandingPage />
+        } />
+        <Route path="/login" element={
+          isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />
+        } />
         <Route path="/terms" element={<TermsPage />} />
 
+        {/* Admin Route */}
         <Route path="/admin" element={
           <ProtectedRoute>
             <AdminDashboard />
           </ProtectedRoute>
         } />
 
+        {/* Protected Dashboard Routes */}
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <Layout />
@@ -112,6 +119,7 @@ function App() {
           <Route path="dispatch" element={<ErrorBoundary><DispatchPage /></ErrorBoundary>} />
         </Route>
 
+        {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ToastContainer />
