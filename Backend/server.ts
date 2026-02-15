@@ -25,6 +25,9 @@ console.log('🔄 Initializing Services...');
 const whatsappService = new WhatsappService();
 const cronService = new CronService(whatsappService);
 
+// Export for use in dispatch routes
+export function getWhatsappService() { return whatsappService; }
+
 // Routes
 console.log('🔄 Setting up Routes...');
 app.use('/api/admin', adminRoutes);

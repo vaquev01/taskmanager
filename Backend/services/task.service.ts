@@ -55,21 +55,34 @@ export class TaskService {
     }
 
     /**
-     * Get today's tasks for a user
+     * Get today's tasks for a user (timezone-aware)
      */
-    async getTasksForToday(userId: string): Promise<Task[]> {
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
+    async getTasksForToday(userId: string, timezone: string = 'America/Sao_Paulo'): Promise<Task[]> {
+        // Calculate "today" boundaries in the user's timezone
+        const now = new Date();
+        const userDateStr = now.toLocaleDateString('en-CA', { timeZone: timezone }); // 'YYYY-MM-DD'
+        const startOfDay = new Date(`${userDateStr}T00:00:00`);
+        const endOfDay = new Date(`${userDateStr}T23:59:59.999`);
 
-        const endOfDay = new Date();
-        endOfDay.setHours(23, 59, 59, 999);
+        // Convert to UTC offsets for Prisma query
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            timeZoneName: 'longOffset'
+        });
+        const parts = formatter.formatToParts(now);
+        const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT-03:00';
+        // Parse offset like "GMT-03:00" → "-03:00"
+        const offset = offsetPart.replace('GMT', '') || '+00:00';
+
+        const startUTC = new Date(`${userDateStr}T00:00:00${offset}`);
+        const endUTC = new Date(`${userDateStr}T23:59:59.999${offset}`);
 
         return prisma.task.findMany({
             where: {
                 responsavel_id: userId,
                 prazo: {
-                    gte: startOfDay,
-                    lte: endOfDay,
+                    gte: startUTC,
+                    lte: endUTC,
                 },
                 status: {
                     not: TaskStatus.CONCLUIDA

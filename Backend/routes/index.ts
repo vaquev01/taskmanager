@@ -4,6 +4,7 @@ import projectRoutes from './project.routes';
 import userRoutes from './user.routes';
 import reminderRoutes from './reminder.routes';
 import teamRoutes from './team.routes';
+import dispatchRoutes from './dispatch.routes';
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use('/projects', projectRoutes);
 router.use('/users', userRoutes);
 router.use('/reminders', reminderRoutes);
 router.use('/teams', teamRoutes);
+router.use('/dispatch', dispatchRoutes);
 
 export default router;

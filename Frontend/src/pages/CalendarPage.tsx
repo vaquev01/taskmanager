@@ -145,16 +145,35 @@ export const CalendarPage = () => {
                             <p className="text-sm text-[var(--text-muted)]">Nenhuma tarefa para este dia.</p>
                         ) : (
                             <div className="flex flex-col gap-3">
-                                {selectedTasks.map((task: any) => (
-                                    <div key={task.id} onClick={() => setSelectedTask(task)} className="p-4 rounded-xl bg-[var(--glass-surface)] border border-[var(--glass-border)] cursor-pointer hover:border-violet-500/30 transition-all">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <div className={`w-2 h-2 rounded-full ${priorityColors[task.prioridade] || 'bg-gray-500'}`} />
-                                            <span className="text-xs font-bold text-[var(--text-muted)] uppercase">{task.prioridade}</span>
-                                        </div>
-                                        <h4 className="font-semibold text-[var(--text-main)]">{task.titulo}</h4>
-                                        {task.project && <p className="text-xs text-[var(--text-dim)] mt-1">{task.project.nome}</p>}
-                                    </div>
-                                ))}
+                                {selectedTasks
+                                    .sort((a: any, b: any) => {
+                                        if (!a.prazo) return 1;
+                                        if (!b.prazo) return -1;
+                                        return new Date(a.prazo).getTime() - new Date(b.prazo).getTime();
+                                    })
+                                    .map((task: any) => {
+                                        const taskTime = task.prazo ? new Date(task.prazo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null;
+                                        return (
+                                            <div key={task.id} onClick={() => setSelectedTask(task)} className="p-4 rounded-xl bg-[var(--glass-surface)] border border-[var(--glass-border)] cursor-pointer hover:border-violet-500/30 transition-all">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-2 h-2 rounded-full ${priorityColors[task.prioridade] || 'bg-gray-500'}`} />
+                                                        <span className="text-xs font-bold text-[var(--text-muted)] uppercase">{task.prioridade}</span>
+                                                    </div>
+                                                    {taskTime && (
+                                                        <span className="text-xs font-mono font-semibold text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-md">
+                                                            {taskTime}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <h4 className="font-semibold text-[var(--text-main)]">{task.titulo}</h4>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    {task.project && <p className="text-xs text-[var(--text-dim)]">{task.project.nome}</p>}
+                                                    {task.grupo && <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-medium">{task.grupo}</span>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                             </div>
                         )}
                     </div>

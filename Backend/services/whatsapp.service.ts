@@ -604,7 +604,7 @@ export class WhatsappService {
         }
 
         // Team Management
-        if (lower === 'equipe' || lower === 'time') {
+        if (lower === 'equipe' || lower === 'time' || lower === 'equipes' || lower === 'times') {
             await this.listTeam(msg);
             return;
         }
@@ -616,11 +616,23 @@ export class WhatsappService {
             await this.removeMember(msg, text);
             return;
         }
+        if (lower.startsWith('criar equipe') || lower.startsWith('nova equipe')) {
+            await this.createTeamCommand(msg, text);
+            return;
+        }
+        if (lower.startsWith('mover membro') || lower.startsWith('mover ')) {
+            await this.moveMemberCommand(msg, text);
+            return;
+        }
 
         if (lower === 'hoje') {
-            const tasks = await this.taskService.getTasksForToday(user.id);
+            const tasks = await this.taskService.getTasksForToday(user.id, user.timezone || 'America/Sao_Paulo');
             if (tasks.length === 0) return msg.reply('✨ Tudo limpo por hoje!');
-            return msg.reply('📅 *Hoje:*\n' + tasks.map(t => `▫️ ${t.titulo}`).join('\n'));
+            const lines = tasks.map(t => {
+                const time = t.prazo ? new Date(t.prazo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: user.timezone || 'America/Sao_Paulo' }) : '';
+                return `▫️ ${t.titulo}${time ? ` (${time})` : ''}`;
+            });
+            return msg.reply('📅 *Hoje:*\n' + lines.join('\n'));
         }
 
         if (lower === 'lista' || lower === 'minhas tarefas') {
@@ -647,45 +659,75 @@ export class WhatsappService {
             const personaKey = user.persona || 'DEFAULT';
             const personaPrompt = PERSONAS[personaKey] || PERSONAS['DEFAULT'];
 
+            // Build a reference table of dates for the next 7 days
+            const tz = user.timezone || 'America/Sao_Paulo';
+            const now = new Date();
+            const dateRef: string[] = [];
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(now);
+                d.setDate(d.getDate() + i);
+                const dayName = d.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: tz });
+                const dateISO = d.toLocaleDateString('en-CA', { timeZone: tz }); // YYYY-MM-DD
+                const label = i === 0 ? 'HOJE' : i === 1 ? 'AMANHÃ' : dayName.toUpperCase();
+                dateRef.push(`  - ${label} (${dayName}) = ${dateISO}`);
+            }
+
+            // Get timezone offset string
+            const offsetFormatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' });
+            const offsetParts = offsetFormatter.formatToParts(now);
+            const offsetStr = (offsetParts.find(p => p.type === 'timeZoneName')?.value || 'GMT-03:00').replace('GMT', '') || '-03:00';
+
             const systemPrompt = `${personaPrompt}
                         
-                        CONTEXTO TEMPORAL:
-                        - Data/Hora Atual (Local): ${new Date().toLocaleString('pt-BR', { timeZone: user.timezone })}
-                        - Fuso Horário do Usuário: ${user.timezone}
-                        - Dia da semana atual: ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', timeZone: user.timezone })}
+CONTEXTO TEMPORAL (USE ESTES VALORES EXATOS):
+- Data/Hora Atual: ${now.toLocaleString('pt-BR', { timeZone: tz })}
+- Fuso Horário: ${tz} (offset: ${offsetStr})
+- Dia da semana: ${now.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: tz })}
 
-                        SUA MISSÃO:
-                        Analise o HISTÓRICO DE CONVERSA e a última mensagem para identificar UMA OU MAIS tarefas.
-                        
-                        REGRAS DE INTERPRETAÇÃO:
-                        1. **Contexto**: Use o histórico!
-                        2. **Múltiplas Tarefas**: Se o usuário disser "Fazer X e Y", crie DUAS tarefas separadas.
-                        3. **Datas**:
-                             - Se a data for explícita para cada ("X amanhã, Y sexta"), use-as.
-                             - Se a data for global ("X e Y amanhã"), aplique a ambas.
-                             - Retorne datas em ISO com Offset (ex: "2023-10-25T18:00:00-03:00").
-                        4. Se for apenas conversa (sem intenção de tarefa), retorne lista vazia em "tasks".
+TABELA DE REFERÊNCIA DE DATAS (próximos 7 dias):
+${dateRef.join('\n')}
 
-                        SAÍDA JSON OBRIGATÓRIA:
-                        { 
-                            "tasks": [
-                                {
-                                    "title": string, 
-                                    "priority": "ALTA"|"MEDIA"|"BAIXA", 
-                                    "date": string (ISO8601 com Offset) or null, 
-                                    "date_missing": boolean, 
-                                    "category": "TRABALHO"|"PESSOAL"|"ESTUDO"|"SAUDE",
-                                    "is_recurring": boolean,
-                                    "recurrence": "daily"|"weekly"|"monthly"|null,
-                                    "reminder_offset_minutes": number | null
-                                }
-                            ],
-                            "reply_message": string | null (Use se não houver tarefas ou se precisar perguntar algo. MANTENHA A PERSONALIDADE DO PERSONAGEM AQUI.)
-                        }
-                        
-                        IMPORTANTE:
-                        - Se detectar tarefas, mas faltar data em alguma, marque "date_missing": true nela.
-                        `;
+SUA MISSÃO:
+Analise o HISTÓRICO e a última mensagem para identificar UMA OU MAIS tarefas.
+
+REGRAS DE INTERPRETAÇÃO:
+1. **Contexto**: Use o histórico!
+2. **Múltiplas Tarefas**: "Fazer X e Y" = DUAS tarefas separadas.
+3. **Datas OBRIGATÓRIAS**:
+   - Consulte a TABELA DE REFERÊNCIA acima para mapear dias.
+   - "hoje" = ${dateRef[0]?.split('= ')[1] || 'use table'}
+   - "amanhã" = ${dateRef[1]?.split('= ')[1] || 'use table'}
+   - "segunda", "terça", etc = consulte a tabela acima.
+   - "semana que vem" = adicione 7 dias à tabela.
+   - Se o usuário disser uma hora ("às 15h", "às 9", "de manhã"), use essa hora.
+   - Se NÃO disser hora: use 09:00 para tarefas diurnas, 21:00 para "até o fim do dia".
+   - SEMPRE retorne no formato ISO8601 COM offset: "YYYY-MM-DDTHH:mm:00${offsetStr}"
+   - Exemplo: "amanhã às 15h" = "${dateRef[1]?.split('= ')[1] || '2026-02-16'}T15:00:00${offsetStr}"
+4. Se for apenas conversa (sem intenção de tarefa), retorne lista vazia em "tasks".
+5. "Tudo isso para hoje" = todas as tarefas com a data de HOJE.
+6. "até as nove da noite" = horário 21:00.
+
+SAÍDA JSON OBRIGATÓRIA:
+{ 
+    "tasks": [
+        {
+            "title": string, 
+            "priority": "ALTA"|"MEDIA"|"BAIXA", 
+            "date": string (ISO8601 com Offset, ex: "2026-02-16T15:00:00${offsetStr}") or null, 
+            "date_missing": boolean, 
+            "category": "TRABALHO"|"PESSOAL"|"ESTUDO"|"SAUDE",
+            "is_recurring": boolean,
+            "recurrence": "daily"|"weekly"|"monthly"|null,
+            "reminder_offset_minutes": number | null
+        }
+    ],
+    "reply_message": string | null
+}
+
+IMPORTANTE:
+- Se detectar tarefas, mas faltar data, marque "date_missing": true.
+- NUNCA invente datas. Se tiver dúvida, pergunte.
+`;
 
             const openai = this.getOpenAI();
             if (!openai) {
@@ -777,10 +819,41 @@ export class WhatsappService {
     }
 
     private async listTeam(msg: Message) {
-        const users = await prisma.user.findMany({ orderBy: { nome: 'asc' } });
-        const list = users.map((u, i) => `${i + 1}. *${u.nome}*\n   📞 ${u.telefone_whatsapp}`).join('\n\n');
+        const teams = await prisma.team.findMany({
+            include: { members: { include: { user: true } } },
+            orderBy: { nome: 'asc' }
+        });
+        const allUsers = await prisma.user.findMany({ orderBy: { nome: 'asc' } });
 
-        await msg.reply(`👥 *Equipe (${users.length})*\n\n${list}\n\n👇 *Comandos de Gestão:*\n- "add membro [Nome], [11999999999]"\n- "rm membro [Nome ou Tel]"`);
+        let response = `👥 *Equipe (${allUsers.length} membros)*\n`;
+
+        if (teams.length > 0) {
+            // Group by team
+            const teamUserIds = new Set<string>();
+            for (const team of teams) {
+                const members = team.members.map((m: any) => m.user).filter(Boolean);
+                response += `\n🏢 *${team.nome}* (${members.length}):\n`;
+                members.forEach((u: any) => {
+                    response += `   • ${u.nome} — 📞 ${u.telefone_whatsapp}\n`;
+                    teamUserIds.add(u.id);
+                });
+            }
+
+            // Users without team
+            const unassigned = allUsers.filter(u => !teamUserIds.has(u.id));
+            if (unassigned.length > 0) {
+                response += `\n📋 *Sem Equipe* (${unassigned.length}):\n`;
+                unassigned.forEach(u => {
+                    response += `   • ${u.nome} — 📞 ${u.telefone_whatsapp}\n`;
+                });
+            }
+        } else {
+            response += allUsers.map((u, i) => `${i + 1}. *${u.nome}*\n   📞 ${u.telefone_whatsapp}`).join('\n\n');
+        }
+
+        response += `\n\n👇 *Comandos de Gestão:*\n- "add membro Nome, 5511999, equipe X"\n- "rm membro Nome"\n- "criar equipe NomeDaEquipe"\n- "mover membro Nome para equipe X"`;
+
+        await msg.reply(response);
     }
 
     private async addMember(msg: Message, text: string) {
@@ -788,7 +861,13 @@ export class WhatsappService {
         const parts = content.split(',').map(p => p.trim());
 
         if (parts.length < 2) {
-            return msg.reply('❌ Formato inválido.\nUse: *add membro Nome, 5511999999999*');
+            return msg.reply('❌ Formato inválido.\nUse: *add membro Nome, 5511999999999*\nOu: *add membro Nome, 5511999999999, equipe NomeDaEquipe*');
+        }
+
+        // Check if last part is a team assignment
+        let teamName: string | null = null;
+        if (parts.length >= 3 && parts[parts.length - 1].toLowerCase().startsWith('equipe ')) {
+            teamName = parts.pop()!.replace(/^equipe\s+/i, '').trim();
         }
 
         const phone = parts.pop()!;
@@ -800,15 +879,87 @@ export class WhatsappService {
         }
 
         try {
-            await prisma.user.create({
+            const newUser = await prisma.user.create({
                 data: {
                     nome: name,
                     telefone_whatsapp: cleanPhone
                 }
             });
-            await msg.reply(`✅ Membro *${name}* adicionado à equipe!`);
+
+            let teamMsg = '';
+            if (teamName) {
+                const team = await prisma.team.findFirst({ where: { nome: { contains: teamName, mode: 'insensitive' } } });
+                if (team) {
+                    await prisma.teamMember.create({
+                        data: { team_id: team.id, user_id: newUser.id }
+                    });
+                    teamMsg = ` na equipe *${team.nome}*`;
+                } else {
+                    teamMsg = ' (⚠️ equipe não encontrada)';
+                }
+            }
+
+            await msg.reply(`✅ Membro *${name}* adicionado${teamMsg}!`);
         } catch (e) {
             await msg.reply('❌ Erro: Telefone já cadastrado ou inválido.');
+        }
+    }
+
+    private async createTeamCommand(msg: Message, text: string) {
+        const teamName = text.replace(/^(criar|nova) equipe\s+/i, '').trim();
+        if (!teamName) {
+            return msg.reply('❌ Formato: *criar equipe NomeDaEquipe*');
+        }
+
+        try {
+            const existing = await prisma.team.findFirst({ where: { nome: { equals: teamName, mode: 'insensitive' } } });
+            if (existing) {
+                return msg.reply(`⚠️ Equipe "${teamName}" já existe!`);
+            }
+
+            await prisma.team.create({ data: { nome: teamName } });
+            await msg.reply(`✅ Equipe *${teamName}* criada!\n\nPara adicionar membros:\n"add membro Nome, Tel, equipe ${teamName}"\n"mover membro Nome para equipe ${teamName}"`);
+        } catch (e) {
+            await msg.reply('❌ Erro ao criar equipe.');
+        }
+    }
+
+    private async moveMemberCommand(msg: Message, text: string) {
+        // Formats: "mover membro João para equipe Marketing" or "mover João para Marketing"
+        const match = text.match(/^mover\s+(?:membro\s+)?(.+?)\s+para\s+(?:equipe\s+)?(.+)$/i);
+        if (!match) {
+            return msg.reply('❌ Formato: *mover membro Nome para equipe NomeDaEquipe*');
+        }
+
+        const [, memberName, teamName] = match;
+
+        try {
+            const user = await prisma.user.findFirst({
+                where: { nome: { contains: memberName.trim(), mode: 'insensitive' } }
+            });
+
+            if (!user) {
+                return msg.reply(`❌ Membro "${memberName}" não encontrado.`);
+            }
+
+            const team = await prisma.team.findFirst({
+                where: { nome: { contains: teamName.trim(), mode: 'insensitive' } }
+            });
+
+            if (!team) {
+                return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
+            }
+
+            // Remove from all teams first
+            await prisma.teamMember.deleteMany({ where: { user_id: user.id } });
+            // Add to target team
+            await prisma.teamMember.create({
+                data: { team_id: team.id, user_id: user.id }
+            });
+
+            await msg.reply(`✅ *${user.nome}* movido para equipe *${team.nome}*!`);
+        } catch (e) {
+            await msg.reply('❌ Erro ao mover membro.');
         }
     }
 

@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../lib/api';
-import { LayoutDashboard, Calendar, Users, Settings, Zap, X, Sparkles, LogOut, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Settings, Zap, X, Sparkles, LogOut, Sun, Moon, Send } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useTranslation } from 'react-i18next';
 
@@ -74,6 +74,7 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
                     <SidebarLink to="/dashboard" icon={<LayoutDashboard size={18} />} label={t('sidebar.dashboard')} onClick={onClose} />
                     <SidebarLink to="/dashboard/calendar" icon={<Calendar size={18} />} label={t('sidebar.calendar')} onClick={onClose} />
                     <SidebarLink to="/dashboard/team" icon={<Users size={18} />} label={t('sidebar.team')} badge={users?.length ? String(users.length) : undefined} onClick={onClose} />
+                    <SidebarLink to="/dashboard/dispatch" icon={<Send size={18} />} label="Disparos" onClick={onClose} />
                     <SidebarLink to="/dashboard/settings" icon={<Settings size={18} />} label={t('sidebar.settings')} onClick={onClose} />
                 </nav>
 

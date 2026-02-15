@@ -8,6 +8,7 @@ import { LoginPage } from './pages/LoginPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { TeamPage } from './pages/TeamPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { DispatchPage } from './pages/DispatchPage';
 import { useStore } from './store/useStore';
 import { Loader2 } from 'lucide-react';
 import { LandingPage } from './pages/LandingPage';
@@ -72,6 +73,7 @@ function App() {
           <Route path="calendar" element={<ErrorBoundary><CalendarPage /></ErrorBoundary>} />
           <Route path="team" element={<ErrorBoundary><TeamPage /></ErrorBoundary>} />
           <Route path="settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
+          <Route path="dispatch" element={<ErrorBoundary><DispatchPage /></ErrorBoundary>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

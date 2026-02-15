@@ -2,16 +2,17 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 import { useToastStore } from '../store/useToastStore';
-import { X, User, Mail, Phone, Globe, Loader2, Save, Trash2 } from 'lucide-react';
+import { X, User, Mail, Phone, Globe, Loader2, Save, Trash2, Users } from 'lucide-react';
 import type { User as UserType } from '../types';
 
 interface MemberModalProps {
     isOpen: boolean;
     onClose: () => void;
-    member?: UserType | null; // If provided, we are editing
+    member?: UserType | null;
+    teams?: any[];
 }
 
-export const MemberModal = ({ isOpen, onClose, member }: MemberModalProps) => {
+export const MemberModal = ({ isOpen, onClose, member, teams = [] }: MemberModalProps) => {
     const addToast = useToastStore(s => s.addToast);
     const queryClient = useQueryClient();
 
@@ -19,37 +20,49 @@ export const MemberModal = ({ isOpen, onClose, member }: MemberModalProps) => {
         nome: '',
         email: '',
         telefone_whatsapp: '',
-        role: 'MEMBER', // Future proofing
+        role: 'USER',
         timezone: 'America/Sao_Paulo',
-        avatar: ''
+        avatar: '',
+        teamId: '', // Team to assign to
     });
 
     useEffect(() => {
         if (member) {
             setForm({
                 nome: member.nome,
-                email: (member as any).email || '', // Type casting in case optional
-                telefone_whatsapp: member.whatsapp || (member as any).telefone_whatsapp || '', // Handle varied naming in types vs backend
-                role: 'MEMBER',
+                email: (member as any).email || '',
+                telefone_whatsapp: member.whatsapp || (member as any).telefone_whatsapp || '',
+                role: (member as any).role || 'USER',
                 timezone: member.timezone || 'America/Sao_Paulo',
-                avatar: (member as any).avatar || ''
+                avatar: (member as any).avatar || '',
+                teamId: '',
             });
         } else {
             setForm({
                 nome: '',
                 email: '',
                 telefone_whatsapp: '',
-                role: 'MEMBER',
+                role: 'USER',
                 timezone: 'America/Sao_Paulo',
-                avatar: ''
+                avatar: '',
+                teamId: '',
             });
         }
     }, [member, isOpen]);
 
     const createMutation = useMutation({
-        mutationFn: (data: typeof form) => api.post('/users', data),
+        mutationFn: async (data: typeof form) => {
+            const { teamId, ...userData } = data;
+            const res = await api.post('/users', userData);
+            // If team selected, move user to that team
+            if (teamId && res.data?.id) {
+                await api.post('/teams/move-member', { userId: res.data.id, targetTeamId: teamId });
+            }
+            return res;
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['users'] });
+            queryClient.invalidateQueries({ queryKey: ['teams'] });
             addToast('Membro adicionado com sucesso!', 'success');
             onClose();
         },
@@ -59,9 +72,18 @@ export const MemberModal = ({ isOpen, onClose, member }: MemberModalProps) => {
     });
 
     const updateMutation = useMutation({
-        mutationFn: (data: typeof form) => api.put(`/users/${member?.id}`, data),
+        mutationFn: async (data: typeof form) => {
+            const { teamId, ...userData } = data;
+            const res = await api.put(`/users/${member?.id}`, userData);
+            // If team selected, move user to that team
+            if (teamId && member?.id) {
+                await api.post('/teams/move-member', { userId: member.id, targetTeamId: teamId });
+            }
+            return res;
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['users'] });
+            queryClient.invalidateQueries({ queryKey: ['teams'] });
             addToast('Membro atualizado com sucesso!', 'success');
             onClose();
         },
@@ -74,6 +96,7 @@ export const MemberModal = ({ isOpen, onClose, member }: MemberModalProps) => {
         mutationFn: () => api.delete(`/users/${member?.id}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['users'] });
+            queryClient.invalidateQueries({ queryKey: ['teams'] });
             addToast('Membro removido com sucesso!', 'success');
             onClose();
         },
@@ -154,6 +177,47 @@ export const MemberModal = ({ isOpen, onClose, member }: MemberModalProps) => {
                                     className="w-full pl-10 pr-4 py-2.5 bg-black/20 border border-[var(--glass-border)] rounded-xl focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 outline-none text-[var(--text-main)] placeholder:text-[var(--text-dim)]"
                                     placeholder="joao@exemplo.com"
                                 />
+                            </div>
+                        </div>
+
+                        {/* Team Assignment */}
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium text-[var(--text-secondary)]">Equipe</label>
+                            <div className="relative">
+                                <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" size={18} />
+                                <select
+                                    value={form.teamId}
+                                    onChange={e => setForm({ ...form, teamId: e.target.value })}
+                                    className="w-full pl-10 pr-4 py-2.5 bg-black/20 border border-[var(--glass-border)] rounded-xl focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 outline-none text-[var(--text-main)] appearance-none cursor-pointer"
+                                >
+                                    <option value="">Sem equipe</option>
+                                    {teams.map((team: any) => (
+                                        <option key={team.id} value={team.id}>{team.nome}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Role */}
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium text-[var(--text-secondary)]">Função</label>
+                            <div className="flex gap-2">
+                                {['USER', 'ADMIN', 'SUPER_ADMIN'].map(role => (
+                                    <button
+                                        key={role}
+                                        type="button"
+                                        onClick={() => setForm({ ...form, role })}
+                                        className={`
+                                            px-3 py-1.5 rounded-lg text-xs font-medium transition-all border
+                                            ${form.role === role
+                                                ? 'bg-violet-500/20 text-violet-400 border-violet-500/30'
+                                                : 'bg-black/20 text-[var(--text-muted)] border-[var(--glass-border)] hover:border-violet-500/20'
+                                            }
+                                        `}
+                                    >
+                                        {role === 'USER' ? 'Membro' : role === 'ADMIN' ? 'Admin' : 'Super Admin'}
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
