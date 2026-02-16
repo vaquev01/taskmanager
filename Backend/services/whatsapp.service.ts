@@ -88,35 +88,13 @@ export class WhatsappService {
     public async reload() {
         console.log('🔄 Restarting WhatsApp Client...');
         try {
-            await this.client.destroy();
+            if (this.client) {
+                await this.client.destroy();
+            }
         } catch (e) {
             console.error('Error destroying client:', e);
         }
-
-        const chromiumPath = findChromiumPath();
-
-        this.client = new Client({
-            authStrategy: new LocalAuth(),
-            webVersionCache: WEB_VERSION_CACHE,
-            authTimeoutMs: 120000,
-            puppeteer: {
-                headless: true,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-gpu',
-                    '--disable-dev-shm-usage',
-                    '--single-process',
-                    '--disable-extensions',
-                    '--no-zygote'
-                ],
-                executablePath: chromiumPath
-            }
-        });
-        this.initializeEvents();
-        this.client.initialize();
-        this.isReady = false;
-        this.qrCode = null;
+        await this.initialize();
     }
 
     private initializeEvents() {
@@ -525,7 +503,7 @@ export class WhatsappService {
         const outputPath = path.join(__dirname, '..', `temp_${tempId}.mp3`);
         fs.writeFileSync(inputPath, media.data, 'base64');
         try {
-            await execPromise(`${this.ffmpegPath} -i ${inputPath} ${outputPath}`);
+            await execPromise(`${this.ffmpegPath} -i "${inputPath}" "${outputPath}"`);
 
             const openai = this.getOpenAI();
             if (!openai) throw new Error('OpenAI key missing');
@@ -594,11 +572,11 @@ export class WhatsappService {
                     where: { id: user.id },
                     data: { persona: key }
                 });
-                await msg.reply(`🎭 *Persona Alterada!* Agora eu sou: *${key}*.\n\n${PERSONAS[key].split('.')[0]}.`);
+                await msg.reply(`🎭 * Persona Alterada! * Agora eu sou: * ${key}*.\n\n${PERSONAS[key].split('.')[0]}.`);
                 return;
             } else {
                 const options = Object.keys(PERSONAS).filter(k => k !== 'DEFAULT').join(', ');
-                await msg.reply(`🎭 Persona não encontrada. Tente:\n${options}`);
+                await msg.reply(`🎭 Persona não encontrada.Tente: \n${options} `);
                 return;
             }
         }
@@ -630,7 +608,7 @@ export class WhatsappService {
             if (tasks.length === 0) return msg.reply('✨ Tudo limpo por hoje!');
             const lines = tasks.map(t => {
                 const time = t.prazo ? new Date(t.prazo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: user.timezone || 'America/Sao_Paulo' }) : '';
-                return `▫️ ${t.titulo}${time ? ` (${time})` : ''}`;
+                return `▫️ ${t.titulo}${time ? ` (${time})` : ''} `;
             });
             return msg.reply('📅 *Hoje:*\n' + lines.join('\n'));
         }
@@ -669,7 +647,7 @@ export class WhatsappService {
                 const dayName = d.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: tz });
                 const dateISO = d.toLocaleDateString('en-CA', { timeZone: tz }); // YYYY-MM-DD
                 const label = i === 0 ? 'HOJE' : i === 1 ? 'AMANHÃ' : dayName.toUpperCase();
-                dateRef.push(`  - ${label} (${dayName}) = ${dateISO}`);
+                dateRef.push(`  - ${label} (${dayName}) = ${dateISO} `);
             }
 
             // Get timezone offset string
@@ -679,54 +657,54 @@ export class WhatsappService {
 
             const systemPrompt = `${personaPrompt}
                         
-CONTEXTO TEMPORAL (USE ESTES VALORES EXATOS):
-- Data/Hora Atual: ${now.toLocaleString('pt-BR', { timeZone: tz })}
+CONTEXTO TEMPORAL(USE ESTES VALORES EXATOS):
+- Data / Hora Atual: ${now.toLocaleString('pt-BR', { timeZone: tz })}
 - Fuso Horário: ${tz} (offset: ${offsetStr})
 - Dia da semana: ${now.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: tz })}
 
-TABELA DE REFERÊNCIA DE DATAS (próximos 7 dias):
+TABELA DE REFERÊNCIA DE DATAS(próximos 7 dias):
 ${dateRef.join('\n')}
 
 SUA MISSÃO:
 Analise o HISTÓRICO e a última mensagem para identificar UMA OU MAIS tarefas.
 
 REGRAS DE INTERPRETAÇÃO:
-1. **Contexto**: Use o histórico!
-2. **Múltiplas Tarefas**: "Fazer X e Y" = DUAS tarefas separadas.
-3. **Datas OBRIGATÓRIAS**:
-   - Consulte a TABELA DE REFERÊNCIA acima para mapear dias.
+1. ** Contexto **: Use o histórico!
+2. ** Múltiplas Tarefas **: "Fazer X e Y" = DUAS tarefas separadas.
+3. ** Datas OBRIGATÓRIAS **:
+- Consulte a TABELA DE REFERÊNCIA acima para mapear dias.
    - "hoje" = ${dateRef[0]?.split('= ')[1] || 'use table'}
-   - "amanhã" = ${dateRef[1]?.split('= ')[1] || 'use table'}
-   - "segunda", "terça", etc = consulte a tabela acima.
+- "amanhã" = ${dateRef[1]?.split('= ')[1] || 'use table'}
+- "segunda", "terça", etc = consulte a tabela acima.
    - "semana que vem" = adicione 7 dias à tabela.
-   - Se o usuário disser uma hora ("às 15h", "às 9", "de manhã"), use essa hora.
+   - Se o usuário disser uma hora("às 15h", "às 9", "de manhã"), use essa hora.
    - Se NÃO disser hora: use 09:00 para tarefas diurnas, 21:00 para "até o fim do dia".
    - SEMPRE retorne no formato ISO8601 COM offset: "YYYY-MM-DDTHH:mm:00${offsetStr}"
-   - Exemplo: "amanhã às 15h" = "${dateRef[1]?.split('= ')[1] || '2026-02-16'}T15:00:00${offsetStr}"
-4. Se for apenas conversa (sem intenção de tarefa), retorne lista vazia em "tasks".
+    - Exemplo: "amanhã às 15h" = "${dateRef[1]?.split('= ')[1] || '2026-02-16'}T15:00:00${offsetStr}"
+4. Se for apenas conversa(sem intenção de tarefa), retorne lista vazia em "tasks".
 5. "Tudo isso para hoje" = todas as tarefas com a data de HOJE.
 6. "até as nove da noite" = horário 21:00.
 
 SAÍDA JSON OBRIGATÓRIA:
-{ 
+{
     "tasks": [
         {
-            "title": string, 
-            "priority": "ALTA"|"MEDIA"|"BAIXA", 
-            "date": string (ISO8601 com Offset, ex: "2026-02-16T15:00:00${offsetStr}") or null, 
-            "date_missing": boolean, 
-            "category": "TRABALHO"|"PESSOAL"|"ESTUDO"|"SAUDE",
+            "title": string,
+            "priority": "ALTA" | "MEDIA" | "BAIXA",
+            "date": string(ISO8601 com Offset, ex: "2026-02-16T15:00:00${offsetStr}") or null,
+            "date_missing": boolean,
+            "category": "TRABALHO" | "PESSOAL" | "ESTUDO" | "SAUDE",
             "is_recurring": boolean,
-            "recurrence": "daily"|"weekly"|"monthly"|null,
+            "recurrence": "daily" | "weekly" | "monthly" | null,
             "reminder_offset_minutes": number | null
         }
     ],
-    "reply_message": string | null
+        "reply_message": string | null
 }
 
 IMPORTANTE:
 - Se detectar tarefas, mas faltar data, marque "date_missing": true.
-- NUNCA invente datas. Se tiver dúvida, pergunte.
+- NUNCA invente datas.Se tiver dúvida, pergunte.
 `;
 
             const openai = this.getOpenAI();
@@ -767,7 +745,7 @@ IMPORTANTE:
             for (const t of tasks) {
                 if (t.date_missing) {
                     hasMissingDate = true;
-                    responseText += `⚠️ *${t.title || 'Tarefa'}*: Faltou a data.\n`;
+                    responseText += `⚠️ * ${t.title || 'Tarefa'}*: Faltou a data.\n`;
                     continue;
                 }
 
@@ -798,7 +776,7 @@ IMPORTANTE:
                 }
 
                 const dateStr = newTask.prazo ? new Date(newTask.prazo).toLocaleString('pt-BR', { timeZone: user.timezone, dateStyle: 'short', timeStyle: 'short' }) : 'Sem data';
-                responseText += `✅ *${newTask.titulo}*\n📅 ${dateStr}${reminderMsg}\n\n`;
+                responseText += `✅ * ${newTask.titulo}*\n📅 ${dateStr}${reminderMsg} \n\n`;
             }
 
             if (responseText) {
@@ -825,16 +803,16 @@ IMPORTANTE:
         });
         const allUsers = await prisma.user.findMany({ orderBy: { nome: 'asc' } });
 
-        let response = `👥 *Equipe (${allUsers.length} membros)*\n`;
+        let response = `👥 * Equipe(${allUsers.length} membros) *\n`;
 
         if (teams.length > 0) {
             // Group by team
             const teamUserIds = new Set<string>();
             for (const team of teams) {
                 const members = team.members.map((m: any) => m.user).filter(Boolean);
-                response += `\n🏢 *${team.nome}* (${members.length}):\n`;
+                response += `\n🏢 * ${team.nome}* (${members.length}): \n`;
                 members.forEach((u: any) => {
-                    response += `   • ${u.nome} — 📞 ${u.telefone_whatsapp}\n`;
+                    response += `   • ${u.nome} — 📞 ${u.telefone_whatsapp} \n`;
                     teamUserIds.add(u.id);
                 });
             }
@@ -842,16 +820,16 @@ IMPORTANTE:
             // Users without team
             const unassigned = allUsers.filter(u => !teamUserIds.has(u.id));
             if (unassigned.length > 0) {
-                response += `\n📋 *Sem Equipe* (${unassigned.length}):\n`;
+                response += `\n📋 * Sem Equipe * (${unassigned.length}): \n`;
                 unassigned.forEach(u => {
-                    response += `   • ${u.nome} — 📞 ${u.telefone_whatsapp}\n`;
+                    response += `   • ${u.nome} — 📞 ${u.telefone_whatsapp} \n`;
                 });
             }
         } else {
-            response += allUsers.map((u, i) => `${i + 1}. *${u.nome}*\n   📞 ${u.telefone_whatsapp}`).join('\n\n');
+            response += allUsers.map((u, i) => `${i + 1}. * ${u.nome}*\n   📞 ${u.telefone_whatsapp} `).join('\n\n');
         }
 
-        response += `\n\n👇 *Comandos de Gestão:*\n- "add membro Nome, 5511999, equipe X"\n- "rm membro Nome"\n- "criar equipe NomeDaEquipe"\n- "mover membro Nome para equipe X"`;
+        response += `\n\n👇 * Comandos de Gestão:*\n - "add membro Nome, 5511999, equipe X"\n - "rm membro Nome"\n - "criar equipe NomeDaEquipe"\n - "mover membro Nome para equipe X"`;
 
         await msg.reply(response);
     }
@@ -893,13 +871,13 @@ IMPORTANTE:
                     await prisma.teamMember.create({
                         data: { team_id: team.id, user_id: newUser.id }
                     });
-                    teamMsg = ` na equipe *${team.nome}*`;
+                    teamMsg = ` na equipe * ${team.nome}* `;
                 } else {
                     teamMsg = ' (⚠️ equipe não encontrada)';
                 }
             }
 
-            await msg.reply(`✅ Membro *${name}* adicionado${teamMsg}!`);
+            await msg.reply(`✅ Membro * ${name}* adicionado${teamMsg} !`);
         } catch (e) {
             await msg.reply('❌ Erro: Telefone já cadastrado ou inválido.');
         }
@@ -938,9 +916,61 @@ IMPORTANTE:
                     admin_id: adminUser.id
                 }
             });
-            await msg.reply(`✅ Equipe *${teamName}* criada!\nAdmin: ${adminUser.nome}\n\nPara adicionar membros:\n"add membro Nome, Tel, equipe ${teamName}"`);
+            await msg.reply(`✅ Equipe * ${teamName}* criada!\nAdmin: ${adminUser.nome} \n\nPara adicionar membros: \n"add membro Nome, Tel, equipe ${teamName}"`);
         } catch (e) {
+            console.error(e);
             await msg.reply('❌ Erro ao criar equipe.');
+        }
+    }
+
+    private async handleAddMember(msg: Message, content: string) {
+        // "add membro [Nome], [Tel], equipe [Time]"
+        try {
+            const parts = content.replace('add membro', '').split(',').map(p => p.trim());
+            if (parts.length < 3) throw new Error('Formato inválido');
+
+            const memberName = parts[0];
+            const memberPhone = parts[1].replace(/\D/g, '');
+            const teamName = parts[2].replace('equipe', '').trim();
+
+            const team = await prisma.team.findFirst({ where: { nome: teamName } });
+            if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
+
+            // Create or Find User
+            let user = await prisma.user.findUnique({ where: { telefone_whatsapp: memberPhone } });
+            if (!user) {
+                user = await prisma.user.create({
+                    data: {
+                        nome: memberName,
+                        telefone_whatsapp: memberPhone,
+                        password_hash: '$2a$10$WkG/...' // Default hash or handle registration
+                    }
+                });
+            }
+
+            // Add to Team
+            await prisma.teamMember.create({
+                data: {
+                    team_id: team.id,
+                    user_id: user.id
+                }
+            });
+
+            await msg.reply(`✅ * ${user.nome}* adicionado à equipe * ${team.nome}* !`);
+
+        } catch (e) {
+            console.error(e);
+            await msg.reply('❌ Erro ao adicionar membro. Use: "add membro Nome, 551199999999, equipe Marketing"');
+        }
+    }
+
+    private async handleRemoveMember(msg: Message, content: string) {
+        // "remover membro [Nome/Tel] da equipe [Time]"
+        try {
+            // Simplified logic for example
+            await msg.reply('❌ Funcionalidade em manutenção.');
+        } catch (e) {
+            await msg.reply('❌ Erro ao remover membro.');
         }
     }
 
@@ -977,7 +1007,7 @@ IMPORTANTE:
                 data: { team_id: team.id, user_id: user.id }
             });
 
-            await msg.reply(`✅ *${user.nome}* movido para equipe *${team.nome}*!`);
+            await msg.reply(`✅ * ${user.nome}* movido para equipe * ${team.nome}* !`);
         } catch (e) {
             await msg.reply('❌ Erro ao mover membro.');
         }
@@ -999,7 +1029,7 @@ IMPORTANTE:
 
         try {
             await prisma.user.delete({ where: { id: user.id } });
-            await msg.reply(`🗑️ Membro *${user.nome}* removido.`);
+            await msg.reply(`🗑️ Membro * ${user.nome}* removido.`);
         } catch (e) {
             await msg.reply('❌ Não foi possível remover. O usuário pode ter tarefas vinculadas.');
         }
