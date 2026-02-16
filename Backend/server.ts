@@ -135,17 +135,13 @@ async function ensureAdminUser() {
             });
             console.log(`✅ Super Admin created. Login: ${adminEmail} / Pass: ${defaultPassword}`);
         } else {
-            // Update password if missing or explicitly reset needed (optional, here we check if missing)
-            if (!admin.password_hash) {
-                console.log('⚠️ Admin exists but has no password. Setting default...');
-                await prisma.user.update({
-                    where: { id: admin.id },
-                    data: { password_hash: hash }
-                });
-                console.log(`✅ Admin password updated. Login: ${adminEmail} / Pass: ${defaultPassword}`);
-            } else {
-                console.log('✅ Super Admin exists and has password.');
-            }
+            // FORCE UPDATE password on every startup to ensure access
+            console.log('🔄 Admin exists. Forcing password update to ensure access...');
+            await prisma.user.update({
+                where: { id: admin.id },
+                data: { password_hash: hash }
+            });
+            console.log(`✅ Admin password RESET. Login: ${adminEmail} / Pass: ${defaultPassword}`);
         }
     } catch (error) {
         console.error('❌ Error ensuring admin user:', error);
