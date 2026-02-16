@@ -80,6 +80,7 @@ export class WhatsappService {
             console.warn('⚠️ OPENAI_API_KEY is missing. AI features will fail.');
             return null;
         }
+        // console.log('🔑 OpenAI Key is present.');
         return new OpenAI({
             apiKey: process.env.OPENAI_API_KEY,
         });
@@ -427,28 +428,19 @@ export class WhatsappService {
             where: { telefone_whatsapp: phoneNumber }
         });
 
-        if (!user) {
-            // ... user registration logic ...
-            // (Copy existing logic here or keep it if I use Replace on specific lines)
-            // I will assume existing logic for user creation is unchanged if I target correctly.
-            // But wait, the Replace tool replaces the WHOLE BLOCK from StartLine to EndLine.
-            // I need to be careful not to delete user registration logic if it's inside the range.
-            // My StartLine is 229 (handleIncomingMessage start).
-        }
+        console.log(`👤 User lookup for ${phoneNumber}: ${user ? 'Found (' + user.nome + ')' : 'NOT FOUND'}`);
 
-        // RE-IMPLEMENTING USER CHECK TO BE SAFE (Simplifying for brevity in this replace block)
         if (!user) {
-            if (text.toLowerCase().includes('start') || text.toLowerCase().includes('oi') || text.toLowerCase().includes('olá')) {
-                const name = contact.pushname || 'Novo Usuário';
+            console.log('✨ Creating new user for', phoneNumber);
+            const name = contact.pushname || 'Novo Usuário';
+            try {
                 user = await prisma.user.create({ data: { nome: name, telefone_whatsapp: phoneNumber } });
-                await msg.reply(`👋 Olá ${name}!`);
+                console.log('✅ User created:', user.id);
+                await msg.reply(`👋 Olá ${name}! Sou seu assistente TaskFlow.`);
                 await this.sendMainMenu(msg);
-                return;
-            } else {
-                const name = contact.pushname || 'Novo Usuário';
-                user = await prisma.user.create({ data: { nome: name, telefone_whatsapp: phoneNumber } });
-                await msg.reply(`👋 Bem-vindo!`);
-                await this.sendMainMenu(msg);
+                return; // Stop here after welcome
+            } catch (e) {
+                console.error('❌ Failed to create user:', e);
                 return;
             }
         }
@@ -553,6 +545,7 @@ export class WhatsappService {
     }
 
     private async processSmartMessage(msg: Message, user: any, text: string) {
+        console.log(`🤖 Processing Smart Message for ${user.nome}: "${text}"`);
         // Special Commands (Fallback/Menus)
         const lower = text.toLowerCase();
 
