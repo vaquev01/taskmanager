@@ -259,11 +259,22 @@ export class WhatsappService {
             console.log('💾 WhatsApp session saved to PostgreSQL!');
         });
 
-        this.client.on('message', async (msg) => {
+        this.client.on('message_create', async (msg) => {
             try {
+                // Ignore messages sent by the bot itself
+                if (msg.fromMe) return;
+                console.log(`📨 [message_create] from=${msg.from} type=${msg.type}`);
                 await this.handleIncomingMessage(msg);
             } catch (e) {
                 console.error('❌ Error handling message:', e);
+            }
+        });
+
+        this.client.on('message', async (msg) => {
+            try {
+                console.log(`📩 [message] from=${msg.from} type=${msg.type}`);
+            } catch (e) {
+                // just diagnostic
             }
         });
 
