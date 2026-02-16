@@ -466,6 +466,11 @@ export class WhatsappService {
         const voterId = vote.voter;
         console.log(`🗳️ [handlePollVote] voterId=${voterId}, selected="${selected}"`);
 
+        // Get the correct chat ID from the parent message (handles @lid format)
+        const parentMsg = vote.parentMessage;
+        const chatId = parentMsg?.to || parentMsg?.from || voterId;
+        console.log(`🗳️ [handlePollVote] parentMsg.to=${parentMsg?.to}, parentMsg.from=${parentMsg?.from}, chatId=${chatId}`);
+
         const contact = await this.client.getContactById(voterId);
         const phoneNumber = contact.number;
 
@@ -478,13 +483,22 @@ export class WhatsappService {
 
         if (!user) { console.log('🗳️ [handlePollVote] User not found for', phoneNumber); return; }
 
+        // Use chatId (from parentMessage) instead of voterId for reliable delivery
         const reply = async (text: string) => {
             try {
-                console.log(`📤 [pollReply] Sending to ${voterId}: ${text.substring(0, 60)}...`);
-                await this.client.sendMessage(voterId, text);
+                console.log(`📤 [pollReply] Sending to ${chatId}: ${text.substring(0, 60)}...`);
+                await this.client.sendMessage(chatId, text);
                 console.log(`✅ [pollReply] Sent OK`);
             } catch (err: any) {
-                console.error(`❌ [pollReply] Failed: ${err?.message || err}`);
+                console.error(`❌ [pollReply] sendMessage(${chatId}) failed: ${err?.message || err}`);
+                // Fallback: try voterId directly
+                try {
+                    console.log(`📤 [pollReply] Fallback to voterId ${voterId}...`);
+                    await this.client.sendMessage(voterId, text);
+                    console.log(`✅ [pollReply] Fallback OK`);
+                } catch (err2: any) {
+                    console.error(`❌ [pollReply] ALL failed: ${err2?.message || err2}`);
+                }
             }
         };
 
