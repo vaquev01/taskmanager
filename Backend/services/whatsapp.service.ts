@@ -99,6 +99,9 @@ export class WhatsappService {
         this.isInitializing = false;
         this.isReady = false;
         this.qrCode = null;
+        this.clearInitTimeout();
+
+        // 1. Try graceful destroy
         try {
             if (this.client) {
                 await this.client.destroy();
@@ -106,6 +109,22 @@ export class WhatsappService {
         } catch (e) {
             console.error('Error destroying client:', e);
         }
+
+        // 2. Force-kill any lingering Chromium processes (prevents "browser already running")
+        try {
+            const { execSync } = require('child_process');
+            if (process.platform === 'win32') {
+                execSync('taskkill /F /IM chrome.exe /T 2>nul', { stdio: 'ignore' });
+            } else {
+                execSync('pkill -f "chromium.*wwebjs_auth" 2>/dev/null || pkill -f "chrome.*wwebjs_auth" 2>/dev/null || true', { stdio: 'ignore' });
+            }
+        } catch (e) {
+            // Ignore — no lingering processes
+        }
+
+        // 3. Wait for processes to fully exit
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
         await this.initialize();
     }
 
@@ -928,9 +947,13 @@ IMPORTANTE:
                 await this.updateHistory(user.id, 'assistant', ask);
             }
 
-        } catch (error) {
-            console.error('AI Processing Error:', error);
-            await msg.reply('😵 Tive um problema ao processar isso. Tente novamente mais tarde.');
+        } catch (error: any) {
+            console.error('AI Processing Error:', error?.message || error);
+            if (error?.message?.includes('API key') || error?.message?.includes('Incorrect API')) {
+                await msg.reply('⚠️ Chave da API OpenAI inválida ou ausente. Contate o admin.');
+            } else {
+                await msg.reply('😵 Tive um problema ao processar isso. Tente novamente mais tarde.');
+            }
         }
     }
 
