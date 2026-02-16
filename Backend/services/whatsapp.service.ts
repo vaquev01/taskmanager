@@ -1,4 +1,5 @@
-import { Client, LocalAuth, Message, Poll } from 'whatsapp-web.js';
+import { Client, RemoteAuth, Message, Poll } from 'whatsapp-web.js';
+import { PostgresStore } from '../lib/PostgresStore';
 // @ts-ignore
 import qrcode from 'qrcode-terminal';
 import { TaskService } from './task.service';
@@ -193,24 +194,32 @@ export class WhatsappService {
             }, delay);
         });
 
-        this.client.on('auth_failure', () => {
-            console.log('❌ WhatsApp Auth Failed — clearing corrupted session and restarting...');
+        this.client.on('auth_failure', async () => {
+            console.log('❌ WhatsApp Auth Failed — clearing remote session and restarting...');
             this.isReady = false;
             this.qrCode = null;
             this.isInitializing = false;
             this.clearInitTimeout();
-            // Clear corrupted session so a fresh QR is generated
+            // Clear remote session so a fresh QR is generated
+            try {
+                const store = new PostgresStore();
+                await store.delete({ session: 'RemoteAuth-client-one' });
+                console.log('🗑️ Cleared remote session from DB.');
+            } catch (e) {
+                console.error('Error clearing remote session:', e);
+            }
+            // Also clear local auth folder if it exists
             const authPath = path.join(__dirname, '..', '.wwebjs_auth');
             try {
                 if (fs.existsSync(authPath)) {
                     fs.rmSync(authPath, { recursive: true, force: true });
-                    console.log('🗑️ Cleared corrupted session data.');
                 }
-            } catch (e) {
-                console.error('Error clearing session:', e);
-            }
-            // Auto-restart after clearing
+            } catch (e) { /* ignore */ }
             setTimeout(() => this.reload(), 3000);
+        });
+
+        this.client.on('remote_session_saved', () => {
+            console.log('💾 WhatsApp session saved to PostgreSQL!');
         });
 
         this.client.on('message', async (msg) => {
@@ -247,11 +256,13 @@ export class WhatsappService {
         console.log(`🔍 Chromium path: ${chromiumPath || 'NOT FOUND (Using Puppeteer bundled)'}`);
 
         try {
+            const store = new PostgresStore();
             this.client = new Client({
                 restartOnAuthFail: true,
-                authStrategy: new LocalAuth({
+                authStrategy: new RemoteAuth({
                     clientId: 'client-one',
-                    dataPath: path.join(__dirname, '..', '.wwebjs_auth')
+                    store: store,
+                    backupSyncIntervalMs: 300000
                 }),
                 webVersionCache: WEB_VERSION_CACHE,
                 authTimeoutMs: 60000,

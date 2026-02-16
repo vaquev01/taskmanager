@@ -175,3 +175,9 @@ model PushSubscription {
 
   user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
+
+model WhatsAppSession {
+  session    String   @id
+  data       String   // base64-encoded zip
+  updated_at DateTime @updatedAt
+}
