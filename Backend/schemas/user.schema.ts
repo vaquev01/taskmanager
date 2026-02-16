@@ -22,5 +22,6 @@ export const updateUserSchema = z.object({
     avatar: z.string().url().optional().or(z.literal('')),
     timezone: z.string().optional(),
     dailySummaryTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).optional(),
-    password: z.string().min(6).optional()
+    password: z.string().min(6).optional(),
+    role: z.enum(['USER', 'ADMIN', 'SUPER_ADMIN']).optional()
 });
