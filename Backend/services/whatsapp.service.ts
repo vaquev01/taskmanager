@@ -69,7 +69,8 @@ export class WhatsappService {
     private maxReconnectAttempts: number = 10;
     private isInitializing: boolean = false;
     private qrAttempts: number = 0;
-    private maxQrAttempts: number = 5;
+    private maxQrAttempts: number = 10;
+    private initTimeout: ReturnType<typeof setTimeout> | null = null;
 
     constructor() {
         this.taskService = new TaskService();
@@ -118,7 +119,8 @@ export class WhatsappService {
             qrcode.generate(qr, { small: true });
 
             if (this.qrAttempts >= this.maxQrAttempts) {
-                console.log('⚠️ Max QR attempts reached. Waiting for manual restart via /whatsapp/restart');
+                console.log('⚠️ Max QR attempts reached. Auto-restarting client...');
+                this.reload();
             }
         });
 
@@ -128,12 +130,15 @@ export class WhatsappService {
             this.qrCode = null;
             this.reconnectAttempts = 0;
             this.qrAttempts = 0;
+            this.isInitializing = false;
+            this.clearInitTimeout();
         });
 
         this.client.on('authenticated', () => {
             console.log('🔑 WhatsApp Client Authenticated!');
             this.qrCode = null;
             this.qrAttempts = 0;
+            this.clearInitTimeout();
         });
 
         this.client.on('loading_screen', (percent: number, message: string) => {
@@ -170,11 +175,23 @@ export class WhatsappService {
         });
 
         this.client.on('auth_failure', () => {
-            console.log('❌ WhatsApp Auth Failed — will show new QR code on next init.');
+            console.log('❌ WhatsApp Auth Failed — clearing corrupted session and restarting...');
             this.isReady = false;
             this.qrCode = null;
-            // Don't delete session folder — let whatsapp-web.js handle re-auth with new QR
-            // Only clear if truly corrupted (user can do manual restart)
+            this.isInitializing = false;
+            this.clearInitTimeout();
+            // Clear corrupted session so a fresh QR is generated
+            const authPath = path.join(__dirname, '..', '.wwebjs_auth');
+            try {
+                if (fs.existsSync(authPath)) {
+                    fs.rmSync(authPath, { recursive: true, force: true });
+                    console.log('🗑️ Cleared corrupted session data.');
+                }
+            } catch (e) {
+                console.error('Error clearing session:', e);
+            }
+            // Auto-restart after clearing
+            setTimeout(() => this.reload(), 3000);
         });
 
         this.client.on('message', async (msg) => {
@@ -222,17 +239,16 @@ export class WhatsappService {
                 puppeteer: {
                     executablePath: chromiumPath,
                     headless: true,
-                    dumpio: true, // IMPORTANT: Logs browser errors to console
                     args: [
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
                         '--disable-dev-shm-usage',
                         '--disable-accelerated-2d-canvas',
                         '--no-first-run',
-                        '--no-zygote',
-                        '--single-process',
                         '--disable-gpu',
-                        '--disable-extensions'
+                        '--disable-extensions',
+                        '--disable-background-timer-throttling',
+                        '--disable-renderer-backgrounding'
                     ]
                 }
             });
@@ -240,12 +256,28 @@ export class WhatsappService {
             this.initializeEvents();
 
             console.log('🚀 Starting Client.initialize()...');
+
+            // Timeout: if init takes more than 90s, force restart
+            this.clearInitTimeout();
+            this.initTimeout = setTimeout(() => {
+                console.log('⏰ WhatsApp initialization timed out (90s). Force restarting...');
+                this.reload();
+            }, 90000);
+
             await this.client.initialize();
             console.log('✅ Client.initialize() called successfully.');
 
         } catch (error) {
             console.error('❌ WhatsApp initialization CRITICAL FAILURE:', error);
             this.isInitializing = false;
+            this.clearInitTimeout();
+        }
+    }
+
+    private clearInitTimeout() {
+        if (this.initTimeout) {
+            clearTimeout(this.initTimeout);
+            this.initTimeout = null;
         }
     }
 
