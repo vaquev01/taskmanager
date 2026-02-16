@@ -991,7 +991,23 @@ export class WhatsappService {
             const offsetParts = offsetFormatter.formatToParts(now);
             const offsetStr = (offsetParts.find(p => p.type === 'timeZoneName')?.value || 'GMT-03:00').replace('GMT', '') || '-03:00';
 
+            // Build user list for AI context
+            const allUsers = await prisma.user.findMany({ select: { nome: true, telefone_whatsapp: true } });
+            const userListStr = allUsers.map(u => `- ${u.nome}`).join('\n');
+
+            // Build team list for AI context
+            const allTeams = await prisma.team.findMany({ select: { nome: true }, orderBy: { nome: 'asc' } });
+            const teamListStr = allTeams.map(t => `- ${t.nome}`).join('\n');
+
             const systemPrompt = `${personaPrompt}
+
+USUÁRIOS CADASTRADOS NO SISTEMA:
+${userListStr}
+
+EQUIPES CADASTRADAS:
+${teamListStr || '- Nenhuma equipe'}
+
+O USUÁRIO QUE ESTÁ FALANDO COM VOCÊ SE CHAMA: ${user.nome}
                         
 CONTEXTO TEMPORAL(USE ESTES VALORES EXATOS):
 - Data / Hora Atual: ${now.toLocaleString('pt-BR', { timeZone: tz })}
@@ -1008,12 +1024,19 @@ REGRA CRÍTICA: Analise APENAS a última mensagem. O histórico serve SOMENTE pa
 NUNCA crie tarefas a partir de mensagens antigas do histórico. Só crie tarefas se a ÚLTIMA MENSAGEM contiver uma ação.
 
 Exemplos que SÃO tarefas (última mensagem contém ação):
-- "Colocar queijões" → tarefa: "Colocar queijões"
-- "Comprar leite" → tarefa: "Comprar leite"
-- "Ligar pro João" → tarefa: "Ligar pro João"
-- "Reunião às 15h" → tarefa: "Reunião" com data hoje 15h
-- "Pagar conta de luz" → tarefa: "Pagar conta de luz"
-- "Lançar binder" → tarefa: "Lançar binder"
+- "Colocar queijões" → tarefa: "Colocar queijões", assigned_to: null (para mim mesmo)
+- "Comprar leite" → tarefa: "Comprar leite", assigned_to: null
+- "Ligar pro João" → tarefa: "Ligar pro João", assigned_to: null
+- "Reunião às 15h" → tarefa: "Reunião" com data hoje 15h, assigned_to: null
+- "Lançar binder" → tarefa: "Lançar binder", assigned_to: null
+
+EXEMPLOS DE DELEGAÇÃO (tarefa para outra pessoa ou equipe):
+- "Uma tarefa para Vinícius, editar fotos dos cavalos" → tarefa: "Editar fotos dos cavalos", assigned_to: "Vinícius"
+- "Tarefa para João: preparar relatório" → tarefa: "Preparar relatório", assigned_to: "João"
+- "Nova tarefa para equipe Marketing: criar post" → tarefa: "Criar post", assigned_to_team: "Marketing"
+- "Pede pro Lucas fazer o orçamento" → tarefa: "Fazer o orçamento", assigned_to: "Lucas"
+- "Agenda reunião para o Victor amanhã" → tarefa: "Reunião", assigned_to: "Victor"
+- Se a pessoa mencionada NÃO existe na lista de usuários, use assigned_to com o nome mesmo (será criado depois).
 
 Exemplos que NÃO são tarefas (retorne tasks=[] e reply_message amigável):
 - "Oi", "Olá", "Bom dia", "E aí" → saudação
@@ -1051,11 +1074,19 @@ SAÍDA JSON OBRIGATÓRIA:
             "category": "TRABALHO" | "PESSOAL" | "ESTUDO" | "SAUDE",
             "is_recurring": boolean,
             "recurrence": "daily" | "weekly" | "monthly" | null,
-            "reminder_offset_minutes": number | null
+            "reminder_offset_minutes": number | null,
+            "assigned_to": string | null,
+            "assigned_to_team": string | null
         }
     ],
-        "reply_message": string | null
+    "reply_message": string | null
 }
+
+REGRAS DE ATRIBUIÇÃO:
+- Se o usuário disser "para [Nome]", "pro [Nome]", "do [Nome]" → preencha assigned_to com o nome.
+- Se disser "para equipe [X]" ou "do time [X]" → preencha assigned_to_team.
+- Se NÃO mencionar ninguém, assigned_to = null (será atribuído ao próprio remetente).
+- Use os nomes da lista de USUÁRIOS CADASTRADOS acima para matched exato quando possível.
 
 IMPORTANTE:
 - Se detectar tarefas, mas faltar data, marque "date_missing": true.
@@ -1104,16 +1135,61 @@ IMPORTANTE:
                     continue;
                 }
 
-                // Anti-duplicate: skip if same title already exists for user
+                // Resolve who this task is assigned to
+                let assigneeId = user.id;
+                let assigneeName = user.nome;
+
+                if (t.assigned_to) {
+                    const targetUser = await prisma.user.findFirst({
+                        where: { nome: { contains: t.assigned_to, mode: 'insensitive' } }
+                    });
+                    if (targetUser) {
+                        assigneeId = targetUser.id;
+                        assigneeName = targetUser.nome;
+                    } else {
+                        responseText += `⚠️ Usuário "${t.assigned_to}" não encontrado. Tarefa *${t.title}* atribuída a você.\n\n`;
+                    }
+                }
+
+                if (t.assigned_to_team) {
+                    const team = await prisma.team.findFirst({
+                        where: { nome: { contains: t.assigned_to_team, mode: 'insensitive' } },
+                        include: { members: { include: { user: true } } }
+                    });
+                    if (team && team.members.length > 0) {
+                        // Create task for each team member
+                        for (const member of team.members) {
+                            await this.taskService.createTask({
+                                titulo: t.title || 'Nova Tarefa',
+                                descricao: `Equipe: ${team.nome}. Categoria: ${t.category || 'Geral'}.`,
+                                criador_id: user.id,
+                                responsavel_id: member.user_id,
+                                prazo: t.date ? new Date(t.date) : undefined,
+                                prioridade: t.priority || TaskPriority.MEDIA,
+                                isRecurring: t.is_recurring,
+                                recurrenceInterval: t.recurrence
+                            });
+                        }
+                        const names = team.members.map(m => m.user.nome).join(', ');
+                        const dateStr = t.date ? new Date(t.date).toLocaleString('pt-BR', { timeZone: user.timezone, dateStyle: 'short', timeStyle: 'short' }) : 'Sem data';
+                        responseText += `✅ *${t.title}*\n👥 Equipe ${team.nome}: ${names}\n📅 ${dateStr}\n\n`;
+                        continue;
+                    } else {
+                        responseText += `⚠️ Equipe "${t.assigned_to_team}" não encontrada.\n\n`;
+                        continue;
+                    }
+                }
+
+                // Anti-duplicate: skip if same title already exists for assignee
                 const existing = await prisma.task.findFirst({
                     where: {
-                        responsavel_id: user.id,
+                        responsavel_id: assigneeId,
                         titulo: { equals: t.title || 'Nova Tarefa', mode: 'insensitive' },
                         status: { notIn: ['CONCLUIDA', 'CANCELADA'] }
                     }
                 });
                 if (existing) {
-                    responseText += `⚠️ *${t.title}* já existe nas suas tarefas.\n\n`;
+                    responseText += `⚠️ *${t.title}* já existe para ${assigneeName}.\n\n`;
                     continue;
                 }
 
@@ -1121,7 +1197,7 @@ IMPORTANTE:
                     titulo: t.title || 'Nova Tarefa',
                     descricao: `Categoria: ${t.category || 'Geral'}.`,
                     criador_id: user.id,
-                    responsavel_id: user.id,
+                    responsavel_id: assigneeId,
                     prazo: t.date ? new Date(t.date) : undefined,
                     prioridade: t.priority || TaskPriority.MEDIA,
                     isRecurring: t.is_recurring,
@@ -1135,7 +1211,7 @@ IMPORTANTE:
                     await prisma.reminder.create({
                         data: {
                             task_id: newTask.id,
-                            user_id: user.id,
+                            user_id: assigneeId,
                             horario: reminderTime,
                             enviado: false
                         }
@@ -1144,7 +1220,8 @@ IMPORTANTE:
                 }
 
                 const dateStr = newTask.prazo ? new Date(newTask.prazo).toLocaleString('pt-BR', { timeZone: user.timezone, dateStyle: 'short', timeStyle: 'short' }) : 'Sem data';
-                responseText += `✅ * ${newTask.titulo}*\n📅 ${dateStr}${reminderMsg} \n\n`;
+                const assigneeLabel = assigneeId !== user.id ? `\n👤 Para: ${assigneeName}` : '';
+                responseText += `✅ *${newTask.titulo}*${assigneeLabel}\n📅 ${dateStr}${reminderMsg}\n\n`;
             }
 
             if (responseText) {
