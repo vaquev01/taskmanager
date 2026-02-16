@@ -384,6 +384,23 @@ export class WhatsappService {
         return true;
     }
 
+    // Safe reply: try msg.reply, fallback to client.sendMessage
+    private async safeReply(msg: Message, text: string): Promise<void> {
+        try {
+            await msg.reply(text);
+            console.log(`✅ [safeReply] replied OK (${text.substring(0, 50)}...)`);
+        } catch (replyErr) {
+            console.warn(`⚠️ [safeReply] msg.reply failed:`, replyErr);
+            try {
+                const chatId = msg.from || (await msg.getContact()).id._serialized;
+                await this.client.sendMessage(chatId, text);
+                console.log(`✅ [safeReply] sendMessage fallback OK`);
+            } catch (sendErr) {
+                console.error(`❌ [safeReply] BOTH reply methods failed:`, sendErr);
+            }
+        }
+    }
+
     public async sendMessage(to: string, message: string) {
         if (!this.isReady) return;
         try {
@@ -564,28 +581,44 @@ export class WhatsappService {
     }
 
     private async sendMainMenu(msg: Message) {
-        const sender = await this.getSenderUser(msg);
-        const isAdmin = sender && this.hasRole(sender, 'ADMIN');
+        try {
+            const sender = await this.getSenderUser(msg);
+            const isAdmin = sender && this.hasRole(sender, 'ADMIN');
 
-        const options = [
-            '📅 Minhas Tarefas de Hoje',
-            '📋 Ver Todas Pendentes',
-            '📝 + Criar Nova Tarefa',
-            '🎭 Mudar Personalidade',
-            '👥 Equipe',
-            '💻 Abrir Painel (Web)',
-        ];
+            const options = [
+                '📅 Minhas Tarefas de Hoje',
+                '📋 Ver Todas Pendentes',
+                '📝 + Criar Nova Tarefa',
+                '🎭 Mudar Personalidade',
+                '👥 Equipe',
+                '💻 Abrir Painel (Web)',
+            ];
 
-        if (isAdmin) {
-            options.push('⚙️ Gerenciar Equipe');
+            if (isAdmin) {
+                options.push('⚙️ Gerenciar Equipe');
+            }
+
+            const poll = new Poll('🤖 *Menu TaskFlow*', options, {
+                allowMultipleAnswers: false,
+                messageSecret: Array.from({ length: 32 }, () => Math.floor(Math.random() * 256))
+            });
+
+            // Use client.sendMessage instead of msg.reply for polls (more reliable)
+            const chatId = msg.from || (await msg.getContact()).id._serialized;
+            await this.client.sendMessage(chatId, poll);
+            console.log('✅ [sendMainMenu] Poll sent OK');
+        } catch (e) {
+            console.error('❌ [sendMainMenu] Failed to send poll:', e);
+            // Fallback: send text menu
+            try {
+                const chatId = msg.from || (await msg.getContact()).id._serialized;
+                const textMenu = '🤖 *Menu TaskFlow*\n\nDigite um dos comandos:\n• *hoje* — Tarefas de hoje\n• *lista* — Tarefas pendentes\n• *equipe* — Ver equipe\n• *menu* — Este menu\n\nOu simplesmente escreva uma tarefa!';
+                await this.client.sendMessage(chatId, textMenu);
+                console.log('✅ [sendMainMenu] Text fallback sent OK');
+            } catch (fallbackErr) {
+                console.error('❌ [sendMainMenu] Text fallback also failed:', fallbackErr);
+            }
         }
-
-        const poll = new Poll('🤖 *Menu TaskFlow*', options, {
-            allowMultipleAnswers: false,
-            messageSecret: Array.from({ length: 32 }, () => Math.floor(Math.random() * 256))
-        });
-
-        await msg.reply(poll);
     }
 
     private async sendPersonaMenu(to: string) {
@@ -651,11 +684,12 @@ export class WhatsappService {
     }
 
     private async handleIncomingMessage(msg: Message) {
+        try {
         const contact = await msg.getContact();
         const phoneNumber = contact.number;
         let text = msg.body.trim();
 
-        console.log(`📩 Message from ${phoneNumber}`);
+        console.log(`📩 Message from ${phoneNumber}: "${text.substring(0, 80)}"`);
 
         // 1. Identify User
         let user = await prisma.user.findUnique({
@@ -670,9 +704,9 @@ export class WhatsappService {
             try {
                 user = await prisma.user.create({ data: { nome: name, telefone_whatsapp: phoneNumber } });
                 console.log('✅ User created:', user.id);
-                await msg.reply(`👋 Olá ${name}! Sou seu assistente TaskFlow.`);
+                await this.safeReply(msg, `👋 Olá ${name}! Sou seu assistente TaskFlow.`);
                 await this.sendMainMenu(msg);
-                return; // Stop here after welcome
+                return;
             } catch (e) {
                 console.error('❌ Failed to create user:', e);
                 return;
@@ -698,7 +732,7 @@ export class WhatsappService {
             // B. Images
             else if (media.mimetype.includes('image')) {
                 console.log('🖼️ Analyzing Image...');
-                await msg.reply('👁️ Analisando imagem...');
+                await this.safeReply(msg, '👁️ Analisando imagem...');
                 try {
                     const analysis = await this.analyzeImage(media, user);
 
@@ -735,6 +769,10 @@ export class WhatsappService {
 
         // 3. Smart Processing
         await this.processSmartMessage(msg, user, text);
+
+        } catch (outerErr) {
+            console.error('❌ [handleIncomingMessage] Unhandled error:', outerErr);
+        }
     }
 
     // ... transcribeAudio ... (need to keep it if it's in the block?)
@@ -779,8 +817,8 @@ export class WhatsappService {
     }
 
     private async processSmartMessage(msg: Message, user: any, text: string) {
+      try {
         console.log(`🤖 Processing Smart Message for ${user.nome}: "${text}"`);
-        // Special Commands (Fallback/Menus)
         const lower = text.toLowerCase();
 
         // Update History with User Message
@@ -795,7 +833,8 @@ export class WhatsappService {
         // Intercept greetings — send menu, don't waste AI call
         const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'e aí', 'e ai', 'hey', 'hello', 'hi', 'fala', 'salve', 'eae'];
         if (greetings.includes(lower.trim())) {
-            await msg.reply('Oi! Como posso ajudar? 😊');
+            console.log('👋 Greeting detected, sending menu...');
+            await this.safeReply(msg, 'Oi! Como posso ajudar? 😊');
             await this.sendMainMenu(msg);
             await this.updateHistory(user.id, 'assistant', 'Oi! Como posso ajudar?');
             return;
@@ -823,11 +862,11 @@ export class WhatsappService {
                     where: { id: user.id },
                     data: { persona: key }
                 });
-                await msg.reply(`🎭 * Persona Alterada! * Agora eu sou: * ${key}*.\n\n${PERSONAS[key].split('.')[0]}.`);
+                await this.safeReply(msg, `🎭 * Persona Alterada! * Agora eu sou: * ${key}*.\n\n${PERSONAS[key].split('.')[0]}.`);
                 return;
             } else {
                 const options = Object.keys(PERSONAS).filter(k => k !== 'DEFAULT').join(', ');
-                await msg.reply(`🎭 Persona não encontrada.Tente: \n${options} `);
+                await this.safeReply(msg, `🎭 Persona não encontrada. Tente:\n${options}`);
                 return;
             }
         }
@@ -935,7 +974,7 @@ export class WhatsappService {
             const num = parseInt(statusMatch[2]) - 1;
             const cachedTasks = this.lastTaskList.get(user.id);
             if (!cachedTasks || num < 0 || num >= cachedTasks.length) {
-                return msg.reply('⚠️ Número inválido. Digite *hoje* ou *lista* primeiro para ver as tarefas numeradas.');
+                return this.safeReply(msg, '⚠️ Número inválido. Digite *hoje* ou *lista* primeiro para ver as tarefas numeradas.');
             }
             const task = cachedTasks[num];
             let newStatus: string;
@@ -950,14 +989,14 @@ export class WhatsappService {
                 newStatus = 'PENDENTE'; statusLabel = '� Pendente';
             }
             await prisma.task.update({ where: { id: task.id }, data: { status: newStatus as any } });
-            return msg.reply(`${statusLabel}: *${task.titulo}*`);
+            return this.safeReply(msg, `${statusLabel}: *${task.titulo}*`);
         }
 
         // Filter: tarefas de [nome]
         if (lower.startsWith('tarefas de ') && !lower.startsWith('tarefas de hoje')) {
             const nome = text.substring(11).trim();
             const target = await prisma.user.findFirst({ where: { nome: { contains: nome, mode: 'insensitive' } } });
-            if (!target) return msg.reply(`⚠️ Usuário "${nome}" não encontrado.`);
+            if (!target) return this.safeReply(msg, `⚠️ Usuário "${nome}" não encontrado.`);
             const tasks = await prisma.task.findMany({
                 where: { responsavel_id: target.id, status: { notIn: ['CONCLUIDA', 'CANCELADA'] } },
                 orderBy: { prazo: 'asc' },
@@ -1106,7 +1145,7 @@ IMPORTANTE:
 
             const openai = this.getOpenAI();
             if (!openai) {
-                await msg.reply('⚠️ IA indisponível no momento (Chave de API ausente).');
+                await this.safeReply(msg, '⚠️ IA indisponível no momento (Chave de API ausente).');
                 return;
             }
 
@@ -1125,7 +1164,7 @@ IMPORTANTE:
             // 1. Not a task (Greeting/Chat/Clarification)
             if (tasks.length === 0) {
                 if (result.reply_message) {
-                    await msg.reply(result.reply_message);
+                    await this.safeReply(msg, result.reply_message);
                     await this.sendMainMenu(msg);
                     await this.updateHistory(user.id, 'assistant', result.reply_message);
                 } else {
@@ -1236,24 +1275,29 @@ IMPORTANTE:
             }
 
             if (responseText) {
-                await msg.reply(responseText.trim());
+                await this.safeReply(msg, responseText.trim());
                 await this.updateHistory(user.id, 'assistant', responseText);
             }
 
             if (hasMissingDate) {
                 const ask = '📅 Algumas tarefas ficaram sem data. Quando devo agendá-las?';
-                await msg.reply(ask);
+                await this.safeReply(msg, ask);
                 await this.updateHistory(user.id, 'assistant', ask);
             }
 
         } catch (error: any) {
             console.error('AI Processing Error:', error?.message || error);
             if (error?.message?.includes('API key') || error?.message?.includes('Incorrect API')) {
-                await msg.reply('⚠️ Chave da API OpenAI inválida ou ausente. Contate o admin.');
+                await this.safeReply(msg, '⚠️ Chave da API OpenAI inválida ou ausente. Contate o admin.');
             } else {
-                await msg.reply('😵 Tive um problema ao processar isso. Tente novamente mais tarde.');
+                await this.safeReply(msg, '😵 Tive um problema ao processar isso. Tente novamente mais tarde.');
             }
         }
+
+      } catch (outerErr: any) {
+          console.error('❌ [processSmartMessage] Unhandled error:', outerErr?.message || outerErr);
+          try { await this.safeReply(msg, '😵 Erro inesperado. Tente novamente.'); } catch (_) {}
+      }
     }
 
     private async listTeam(msg: Message) {
