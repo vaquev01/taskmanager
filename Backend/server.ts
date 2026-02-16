@@ -100,23 +100,52 @@ if (fs.existsSync(finalPublicPath)) {
 
 import { prisma } from './lib/prisma';
 
+import bcrypt from 'bcryptjs';
+
 async function ensureAdminUser() {
     try {
-        const admin = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
+        const adminEmail = 'admin@wardogs.com';
+        const adminPhone = '5511999999999';
+        const defaultPassword = 'wardogs';
+
+        // Check if admin exists by email or phone
+        const admin = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { role: 'SUPER_ADMIN' },
+                    { email: adminEmail }
+                ]
+            }
+        });
+
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(defaultPassword, salt);
+
         if (!admin) {
             console.log('⚠️ Super Admin not found. Creating default "Wardogs" user...');
             await prisma.user.create({
                 data: {
                     nome: 'Wardogs',
-                    telefone_whatsapp: '5511999999999',
-                    email: 'admin@wardogs.com',
+                    telefone_whatsapp: adminPhone,
+                    email: adminEmail,
+                    password_hash: hash,
                     avatar: 'https://i.pravatar.cc/150?u=master',
                     role: 'SUPER_ADMIN'
                 }
             });
-            console.log('✅ Super Admin "Wardogs" created successfully.');
+            console.log(`✅ Super Admin created. Login: ${adminEmail} / Pass: ${defaultPassword}`);
         } else {
-            console.log('✅ Super Admin exists.');
+            // Update password if missing or explicitly reset needed (optional, here we check if missing)
+            if (!admin.password_hash) {
+                console.log('⚠️ Admin exists but has no password. Setting default...');
+                await prisma.user.update({
+                    where: { id: admin.id },
+                    data: { password_hash: hash }
+                });
+                console.log(`✅ Admin password updated. Login: ${adminEmail} / Pass: ${defaultPassword}`);
+            } else {
+                console.log('✅ Super Admin exists and has password.');
+            }
         }
     } catch (error) {
         console.error('❌ Error ensuring admin user:', error);
