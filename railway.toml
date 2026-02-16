@@ -1,8 +1,9 @@
 [build]
 builder = "nixpacks"
+buildCommand = "npm install --prefix Database && npm run generate --prefix Backend && npm install --prefix Frontend && npm run build --prefix Frontend && npm install --prefix Backend && npm run build --prefix Backend"
 
 [deploy]
-startCommand = "npm start --prefix Backend"
+startCommand = "cd Backend && npx prisma db push --schema=../Database/schema.prisma --skip-generate && node dist/server.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "on_failure"
