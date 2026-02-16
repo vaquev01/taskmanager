@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { Clock, Bell, Trash2, Save, Sparkles, Wifi, WifiOff, FileText, Download } from 'lucide-react';
 import api from '../lib/api';
+import { ConnectWhatsapp } from '../components/ConnectWhatsapp';
 
 interface Reminder {
     id: string;
@@ -177,10 +178,10 @@ export function SettingsPage() {
                             )}
                         </div>
                     </div>
+
                     {whatsappStatus === 'disconnected' && (
-                        <div className="mt-4 p-4 bg-rose-500/10 text-rose-300 text-sm rounded-xl border border-rose-500/20 flex items-center gap-2">
-                            <WifiOff size={14} />
-                            O bot está offline. Verifique o backend ou escaneie o QR Code novamente.
+                        <div className="mt-4">
+                            <ConnectWhatsapp />
                         </div>
                     )}
                 </div>

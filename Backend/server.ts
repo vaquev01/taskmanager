@@ -52,6 +52,14 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/login', authLimiter);
 
+// Specific WhatsApp Limiter (relaxed for polling)
+const whatsappLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 60, // 1 request per second average
+    message: { error: 'Muitas requisições ao WhatsApp, aguarde.' }
+});
+app.use('/api/whatsapp', whatsappLimiter);
+
 // Initialize Services
 console.log('🔄 Initializing Services...');
 const whatsappService = new WhatsappService();
