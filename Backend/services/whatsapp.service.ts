@@ -468,17 +468,55 @@ export class WhatsappService {
         if (lower.includes('criar')) {
             return reply('📝 Para criar uma tarefa, apenas escreva ou mande áudio.\nEx: *"Ligar para cliente amanhã às 14h"*');
         }
+
+        if (lower.includes('gerenciar')) {
+            const user = await prisma.user.findUnique({ where: { telefone_whatsapp: voterId } });
+            const isSuperAdmin = user && this.hasRole(user, 'SUPER_ADMIN');
+
+            let cmds = `⚙️ *Comandos de Gerenciamento*\n\n`;
+            cmds += `👥 *Equipes:*\n`;
+            cmds += `• *criar equipe NomeDaEquipe*\n`;
+            cmds += `• *deletar equipe NomeDaEquipe*\n`;
+            cmds += `• *equipe* — listar todos\n\n`;
+            cmds += `👤 *Membros:*\n`;
+            cmds += `• *add membro Nome, 5511999, equipe X*\n`;
+            cmds += `• *mover membro Nome para equipe X*\n`;
+            cmds += `• *remover da equipe Nome da equipe X*\n`;
+            cmds += `• *rm membro Nome* — remove do sistema\n\n`;
+            cmds += `📋 *Tarefas:*\n`;
+            cmds += `• *tarefa para Nome: descrição*\n`;
+            cmds += `• *tarefa para equipe X: descrição*\n`;
+            cmds += `• *tarefas da equipe NomeDaEquipe*\n`;
+
+            if (isSuperAdmin) {
+                cmds += `\n👑 *Super Admin:*\n`;
+                cmds += `• *promover Nome*\n`;
+                cmds += `• *rebaixar Nome*\n`;
+                cmds += `• *excluir usuário Nome*\n`;
+            }
+
+            cmds += `\n💡 Envie qualquer comando acima como mensagem de texto.`;
+            return reply(cmds);
+        }
     }
 
     private async sendMainMenu(msg: Message) {
-        const poll = new Poll('🤖 *Menu TaskFlow*', [
+        const sender = await this.getSenderUser(msg);
+        const isAdmin = sender && this.hasRole(sender, 'ADMIN');
+
+        const options = [
             '📅 Minhas Tarefas de Hoje',
             '📋 Ver Todas Pendentes',
-            '📝 + Criar Nova Tarefa',
             '🎭 Mudar Personalidade',
+            '👥 Equipe',
             '💻 Abrir Painel (Web)',
-            '👥 Equipe'
-        ], {
+        ];
+
+        if (isAdmin) {
+            options.push('⚙️ Gerenciar Equipe');
+        }
+
+        const poll = new Poll('🤖 *Menu TaskFlow*', options, {
             allowMultipleAnswers: false,
             messageSecret: Array.from({ length: 32 }, () => Math.floor(Math.random() * 256))
         });
@@ -836,20 +874,34 @@ ${dateRef.join('\n')}
 SUA MISSÃO:
 Analise o HISTÓRICO e a última mensagem para identificar UMA OU MAIS tarefas.
 
+REGRA DE OURO: Na DÚVIDA, SEMPRE crie a tarefa. Qualquer frase que pareça uma ação, atividade, lembrete ou coisa a fazer DEVE virar tarefa.
+Exemplos que SÃO tarefas:
+- "Colocar queijões" → tarefa: "Colocar queijões"
+- "Comprar leite" → tarefa: "Comprar leite"
+- "Ligar pro João" → tarefa: "Ligar pro João"
+- "Reunião às 15h" → tarefa: "Reunião" com data hoje 15h
+- "Pagar conta de luz" → tarefa: "Pagar conta de luz"
+
+Exemplos que NÃO são tarefas (retorne lista vazia):
+- "Oi", "Olá", "Bom dia" → saudação, reply_message amigável
+- "Como funciona?" → pergunta sobre o sistema
+- "Obrigado" → agradecimento
+
 REGRAS DE INTERPRETAÇÃO:
-1. ** Contexto **: Use o histórico!
-2. ** Múltiplas Tarefas **: "Fazer X e Y" = DUAS tarefas separadas.
-3. ** Datas OBRIGATÓRIAS **:
-- Consulte a TABELA DE REFERÊNCIA acima para mapear dias.
+1. **Contexto**: Use o histórico!
+2. **Múltiplas Tarefas**: "Fazer X e Y" = DUAS tarefas separadas.
+3. **Datas OBRIGATÓRIAS**:
+   - Consulte a TABELA DE REFERÊNCIA acima para mapear dias.
    - "hoje" = ${dateRef[0]?.split('= ')[1] || 'use table'}
-- "amanhã" = ${dateRef[1]?.split('= ')[1] || 'use table'}
-- "segunda", "terça", etc = consulte a tabela acima.
+   - "amanhã" = ${dateRef[1]?.split('= ')[1] || 'use table'}
+   - "segunda", "terça", etc = consulte a tabela acima.
    - "semana que vem" = adicione 7 dias à tabela.
    - Se o usuário disser uma hora("às 15h", "às 9", "de manhã"), use essa hora.
    - Se NÃO disser hora: use 09:00 para tarefas diurnas, 21:00 para "até o fim do dia".
+   - Se NÃO disser data NEM hora: marque "date_missing": true (NÃO invente data).
    - SEMPRE retorne no formato ISO8601 COM offset: "YYYY-MM-DDTHH:mm:00${offsetStr}"
-    - Exemplo: "amanhã às 15h" = "${dateRef[1]?.split('= ')[1] || '2026-02-16'}T15:00:00${offsetStr}"
-4. Se for apenas conversa(sem intenção de tarefa), retorne lista vazia em "tasks".
+   - Exemplo: "amanhã às 15h" = "${dateRef[1]?.split('= ')[1] || '2026-02-16'}T15:00:00${offsetStr}"
+4. SOMENTE retorne lista vazia se for CLARAMENTE saudação, pergunta ou conversa casual.
 5. "Tudo isso para hoje" = todas as tarefas com a data de HOJE.
 6. "até as nove da noite" = horário 21:00.
 
