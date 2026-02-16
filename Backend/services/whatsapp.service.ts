@@ -456,13 +456,16 @@ export class WhatsappService {
     }
 
     private async handlePollVote(vote: any) {
+        try {
         // vote.selectedOptions is array of { name: 'Option' }
         // vote.voter is user ID (phone@c.us)
         // vote.parentMessage is the poll message
-        const selected = vote.selectedOptions[0]?.name;
-        if (!selected) return;
+        const selected = vote.selectedOptions?.[0]?.name;
+        if (!selected) { console.log('🗳️ [handlePollVote] No selected option'); return; }
 
         const voterId = vote.voter;
+        console.log(`🗳️ [handlePollVote] voterId=${voterId}, selected="${selected}"`);
+
         const contact = await this.client.getContactById(voterId);
         const phoneNumber = contact.number;
 
@@ -473,19 +476,16 @@ export class WhatsappService {
             where: { telefone_whatsapp: phoneNumber }
         });
 
-        if (!user) return; // Should not happen if they are voting
-
-        // Simulate Message Handling based on Vote
-        // We'll create a fake "Message" object or just call the logic directly
-        // But logic is inside handleIncomingMessage/processSmartMessage which expects a Message object to reply to.
-        // We don't have a 'msg' object to reply to easily (we can reply to vote.parentMessage?)
-
-        // We can create a "Fake" message object that mimics the interface needed
-        // Or refactor logic. 
-        // Let's refactor logic minimally: create a helper to send text to user.
+        if (!user) { console.log('🗳️ [handlePollVote] User not found for', phoneNumber); return; }
 
         const reply = async (text: string) => {
-            await this.client.sendMessage(voterId, text);
+            try {
+                console.log(`📤 [pollReply] Sending to ${voterId}: ${text.substring(0, 60)}...`);
+                await this.client.sendMessage(voterId, text);
+                console.log(`✅ [pollReply] Sent OK`);
+            } catch (err: any) {
+                console.error(`❌ [pollReply] Failed: ${err?.message || err}`);
+            }
         };
 
         // Vision Task Confirmation
@@ -622,6 +622,10 @@ export class WhatsappService {
 
             cmds += `\n💡 Envie qualquer comando acima como mensagem de texto.`;
             return reply(cmds);
+        }
+
+        } catch (pollErr: any) {
+            console.error('❌ [handlePollVote] Error:', pollErr?.message || pollErr);
         }
     }
 
