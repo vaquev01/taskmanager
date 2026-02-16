@@ -13,6 +13,11 @@ import util from 'util';
 
 const execPromise = util.promisify(exec);
 
+// Strip accents/diacritics for fuzzy matching (Vinicius == Vinícius)
+function normalizeStr(str: string): string {
+    return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
 const WEB_VERSION_CACHE = {
     type: 'local' as const,
 };
@@ -104,9 +109,13 @@ export class WhatsappService {
         let msg = `${title}\n\n${lines.join('\n\n')}`;
         msg += `\n\n━━━━━━━━━━━━━━━━━`;
         msg += `\n💡 *Ações rápidas:*`;
-        msg += `\n• *feito 1* — concluir tarefa 1`;
-        msg += `\n• *cancelar 2* — cancelar tarefa 2`;
-        msg += `\n• *iniciar 3* — iniciar tarefa 3`;
+        msg += `\n• *feito 1* — concluir`;
+        msg += `\n• *iniciar 1* — em progresso`;
+        msg += `\n• *cancelar 1* — cancelar`;
+        msg += `\n• *ver 1* — detalhes`;
+        msg += `\n• *editar 1 titulo: Novo* — renomear`;
+        msg += `\n• *editar 1 para: João* — reatribuir`;
+        msg += `\n• *editar 1 prazo: amanhã 15h* — mudar data`;
         return msg;
     }
 
@@ -333,7 +342,7 @@ export class WhatsappService {
 
             this.initializeEvents();
 
-            console.log('🚀 Starting Client.initialize()... [code v3-safeReply]');
+            console.log('🚀 Starting Client.initialize()... [code v4-fuzzy-edit]');
 
             // Timeout: if init takes more than 90s, force restart
             this.clearInitTimeout();
@@ -378,7 +387,7 @@ export class WhatsappService {
     private async requireRole(msg: Message, user: any, minRole: 'ADMIN' | 'SUPER_ADMIN'): Promise<boolean> {
         if (!this.hasRole(user, minRole)) {
             const roleLabel = minRole === 'SUPER_ADMIN' ? 'Super Admin' : 'Admin';
-            await msg.reply(`🔒 Permissão negada. Este comando requer nível *${roleLabel}* ou superior.\nSeu nível atual: *${user.role}*`);
+            await this.safeReply(msg, `🔒 Permissão negada. Este comando requer nível *${roleLabel}* ou superior.\nSeu nível atual: *${user.role}*`);
             return false;
         }
         return true;
@@ -408,6 +417,33 @@ export class WhatsappService {
         } catch (sendErr: any) {
             console.error(`❌ [safeReply] BOTH failed: ${sendErr?.message || sendErr}`);
         }
+    }
+
+    // Fuzzy user lookup: accent-insensitive, partial match
+    private async findUserFuzzy(name: string): Promise<any | null> {
+        // 1. Try exact Prisma contains (case-insensitive)
+        let user = await prisma.user.findFirst({
+            where: { nome: { contains: name, mode: 'insensitive' } }
+        });
+        if (user) return user;
+
+        // 2. Fallback: load all users and compare normalized strings
+        const allUsers = await prisma.user.findMany();
+        const norm = normalizeStr(name);
+        return allUsers.find(u => normalizeStr(u.nome).includes(norm) || norm.includes(normalizeStr(u.nome))) || null;
+    }
+
+    // Fuzzy team lookup: accent-insensitive, partial match
+    private async findTeamFuzzy(name: string): Promise<any | null> {
+        let team = await prisma.team.findFirst({
+            where: { nome: { contains: name, mode: 'insensitive' } },
+            include: { members: { include: { user: true } } }
+        });
+        if (team) return team;
+
+        const allTeams = await prisma.team.findMany({ include: { members: { include: { user: true } } } });
+        const norm = normalizeStr(name);
+        return allTeams.find(t => normalizeStr(t.nome).includes(norm) || norm.includes(normalizeStr(t.nome))) || null;
     }
 
     public async sendMessage(to: string, message: string) {
@@ -731,9 +767,9 @@ export class WhatsappService {
                 console.log('🎙️ Processing Voice Note...');
                 try {
                     text = await this.transcribeAudio(media);
-                    await msg.reply(`📝 *Transcrição:* "${text}"`);
+                    await this.safeReply(msg, `📝 *Transcrição:* "${text}"`);
                 } catch (e) {
-                    await msg.reply('❌ Erro na transcrição.');
+                    await this.safeReply(msg, '❌ Erro na transcrição.');
                     return;
                 }
             }
@@ -752,7 +788,7 @@ export class WhatsappService {
                         const dateStr = analysis.date ? new Date(analysis.date).toLocaleString('pt-BR', { timeZone: user.timezone }) : 'Sem data';
                         const summary = `📄 *Encontrei:*\n\n📌 **${analysis.title}**\n📅 ${dateStr}\n📝 ${analysis.description || ''}`;
 
-                        await msg.reply(summary);
+                        await this.safeReply(msg, summary);
 
                         // Send Poll for Confirmation
                         const poll = new Poll('O que deseja fazer?', [
@@ -760,15 +796,16 @@ export class WhatsappService {
                             '❌ Ignorar / Apenas Foto'
                         ], { allowMultipleAnswers: false, messageSecret: Array.from({ length: 32 }, () => Math.floor(Math.random() * 256)) });
 
-                        await msg.reply(poll);
+                        const chatId = msg.from || (await msg.getContact()).id._serialized;
+                        await this.client.sendMessage(chatId, poll);
                         await this.updateHistory(user.id, 'assistant', `[Analisou imagem: ${analysis.title}]`);
                         return;
                     } else {
-                        await msg.reply('🖼️ Bela foto! Não encontrei nenhum evento ou tarefa nela.');
+                        await this.safeReply(msg, '🖼️ Bela foto! Não encontrei nenhum evento ou tarefa nela.');
                     }
                 } catch (e) {
                     console.error('Vision Error:', e);
-                    await msg.reply('❌ Erro ao analisar imagem.');
+                    await this.safeReply(msg, '❌ Erro ao analisar imagem.');
                 }
                 return;
             }
@@ -944,7 +981,7 @@ export class WhatsappService {
                 if (!t.prazo) return false;
                 return new Date(t.prazo).toLocaleDateString('en-CA', { timeZone: tz }) === todayStr;
             });
-            return msg.reply(this.formatTaskList(todayTasks, '📅 *Tarefas de Hoje:*', user.id));
+            return this.safeReply(msg, this.formatTaskList(todayTasks, '📅 *Tarefas de Hoje:*', user.id));
         }
 
         if (lower === 'lista' || lower === 'minhas tarefas' || lower === 'pendentes' || lower === 'tarefas') {
@@ -953,7 +990,7 @@ export class WhatsappService {
                 orderBy: { prazo: 'asc' },
                 include: { responsavel: { select: { nome: true } } }
             });
-            return msg.reply(this.formatTaskList(tasks, '📋 *Tarefas Pendentes:*', user.id));
+            return this.safeReply(msg, this.formatTaskList(tasks, '📋 *Tarefas Pendentes:*', user.id));
         }
 
         if (lower === 'todas' || lower === 'todas as tarefas' || lower === 'historico' || lower === 'histórico') {
@@ -963,7 +1000,7 @@ export class WhatsappService {
                 take: 20,
                 include: { responsavel: { select: { nome: true } } }
             });
-            return msg.reply(this.formatTaskList(tasks, '� *Todas as Tarefas (20 últimas):*', user.id));
+            return this.safeReply(msg, this.formatTaskList(tasks, '📋 *Todas as Tarefas (20 últimas):*', user.id));
         }
 
         if (lower === 'concluidas' || lower === 'concluídas' || lower === 'feitas') {
@@ -973,7 +1010,7 @@ export class WhatsappService {
                 take: 15,
                 include: { responsavel: { select: { nome: true } } }
             });
-            return msg.reply(this.formatTaskList(tasks, '✅ *Tarefas Concluídas:*', user.id));
+            return this.safeReply(msg, this.formatTaskList(tasks, '✅ *Tarefas Concluídas:*', user.id));
         }
 
         // Status change commands: feito/concluir/cancelar/iniciar/reabrir + number
@@ -1001,17 +1038,115 @@ export class WhatsappService {
             return this.safeReply(msg, `${statusLabel}: *${task.titulo}*`);
         }
 
+        // Task detail: ver N
+        const detailMatch = lower.match(/^(ver|detalhe|detalhes|info)\s+(\d+)$/);
+        if (detailMatch) {
+            const num = parseInt(detailMatch[2]) - 1;
+            const cachedTasks = this.lastTaskList.get(user.id);
+            if (!cachedTasks || num < 0 || num >= cachedTasks.length) {
+                return this.safeReply(msg, '⚠️ Número inválido. Digite *lista* primeiro.');
+            }
+            const task = await prisma.task.findUnique({
+                where: { id: cachedTasks[num].id },
+                include: { responsavel: { select: { nome: true } }, criador: { select: { nome: true } } }
+            });
+            if (!task) return this.safeReply(msg, '⚠️ Tarefa não encontrada.');
+            const statusIcon = WhatsappService.STATUS_ICON[task.status] || '⚪';
+            const prioIcon = WhatsappService.PRIORITY_ICON[task.prioridade] || '';
+            const prazo = task.prazo ? new Date(task.prazo).toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short', timeZone: user.timezone || 'America/Sao_Paulo' }) : 'Sem data';
+            let detail = `📋 *Detalhes da Tarefa #${num + 1}*\n\n`;
+            detail += `📌 *${task.titulo}*\n`;
+            detail += `${statusIcon} Status: *${task.status}*\n`;
+            detail += `${prioIcon} Prioridade: *${task.prioridade}*\n`;
+            detail += `📅 Prazo: ${prazo}\n`;
+            detail += `👤 Responsável: *${(task as any).responsavel?.nome || '?'}*\n`;
+            detail += `✍️ Criador: *${(task as any).criador?.nome || '?'}*\n`;
+            if (task.descricao) detail += `📝 ${task.descricao}\n`;
+            detail += `\n💡 *Editar:*\n`;
+            detail += `• *editar ${num + 1} titulo: Novo Título*\n`;
+            detail += `• *editar ${num + 1} para: Nome*\n`;
+            detail += `• *editar ${num + 1} prazo: amanhã 15h*\n`;
+            detail += `• *editar ${num + 1} prioridade: alta*\n`;
+            return this.safeReply(msg, detail);
+        }
+
+        // Task editing: editar N campo: valor
+        const editMatch = lower.match(/^editar\s+(\d+)\s+(titulo|título|para|responsavel|responsável|prazo|data|prioridade|descricao|descrição)[\s:]+(.+)$/i);
+        if (editMatch) {
+            const num = parseInt(editMatch[1]) - 1;
+            const field = normalizeStr(editMatch[2]);
+            const value = editMatch[3].trim();
+            const cachedTasks = this.lastTaskList.get(user.id);
+            if (!cachedTasks || num < 0 || num >= cachedTasks.length) {
+                return this.safeReply(msg, '⚠️ Número inválido. Digite *lista* primeiro.');
+            }
+            const task = cachedTasks[num];
+
+            if (field === 'titulo' || field === 'titulo') {
+                await prisma.task.update({ where: { id: task.id }, data: { titulo: value } });
+                return this.safeReply(msg, `✏️ Título atualizado: *${value}*`);
+            }
+
+            if (field === 'para' || field === 'responsavel' || field === 'responsavel') {
+                const target = await this.findUserFuzzy(value);
+                if (!target) return this.safeReply(msg, `⚠️ Usuário "${value}" não encontrado.`);
+                await prisma.task.update({ where: { id: task.id }, data: { responsavel_id: target.id } });
+                return this.safeReply(msg, `✏️ *${task.titulo}* reatribuída para *${target.nome}*`);
+            }
+
+            if (field === 'prazo' || field === 'data') {
+                // Simple date parsing
+                const tz = user.timezone || 'America/Sao_Paulo';
+                const now = new Date();
+                let newDate: Date | null = null;
+                const vl = value.toLowerCase();
+                const timeMatch = vl.match(/(\d{1,2})\s*h/);
+                const hour = timeMatch ? parseInt(timeMatch[1]) : 9;
+
+                if (vl.includes('hoje')) {
+                    newDate = new Date(now.toLocaleDateString('en-CA', { timeZone: tz }) + `T${String(hour).padStart(2, '0')}:00:00`);
+                } else if (vl.includes('amanha') || vl.includes('amanhã')) {
+                    const d = new Date(now); d.setDate(d.getDate() + 1);
+                    newDate = new Date(d.toLocaleDateString('en-CA', { timeZone: tz }) + `T${String(hour).padStart(2, '0')}:00:00`);
+                } else {
+                    // Try direct parse
+                    const parsed = new Date(value);
+                    if (!isNaN(parsed.getTime())) newDate = parsed;
+                }
+
+                if (!newDate) return this.safeReply(msg, '⚠️ Não entendi a data. Use: *hoje 15h*, *amanhã 10h*, ou *2026-02-20T15:00*');
+                await prisma.task.update({ where: { id: task.id }, data: { prazo: newDate } });
+                const fmt = newDate.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: tz });
+                return this.safeReply(msg, `✏️ Prazo de *${task.titulo}* alterado para *${fmt}*`);
+            }
+
+            if (field === 'prioridade') {
+                const prioMap: Record<string, string> = { 'alta': 'ALTA', 'media': 'MEDIA', 'média': 'MEDIA', 'baixa': 'BAIXA' };
+                const prio = prioMap[value.toLowerCase()];
+                if (!prio) return this.safeReply(msg, '⚠️ Use: *alta*, *media* ou *baixa*');
+                await prisma.task.update({ where: { id: task.id }, data: { prioridade: prio as any } });
+                return this.safeReply(msg, `✏️ Prioridade de *${task.titulo}* alterada para *${prio}*`);
+            }
+
+            if (field === 'descricao' || field === 'descricao') {
+                await prisma.task.update({ where: { id: task.id }, data: { descricao: value } });
+                return this.safeReply(msg, `✏️ Descrição de *${task.titulo}* atualizada.`);
+            }
+
+            return this.safeReply(msg, '⚠️ Campo não reconhecido. Use: *titulo*, *para*, *prazo*, *prioridade* ou *descricao*');
+        }
+
         // Filter: tarefas de [nome]
         if (lower.startsWith('tarefas de ') && !lower.startsWith('tarefas de hoje')) {
             const nome = text.substring(11).trim();
-            const target = await prisma.user.findFirst({ where: { nome: { contains: nome, mode: 'insensitive' } } });
+            const target = await this.findUserFuzzy(nome);
             if (!target) return this.safeReply(msg, `⚠️ Usuário "${nome}" não encontrado.`);
             const tasks = await prisma.task.findMany({
                 where: { responsavel_id: target.id, status: { notIn: ['CONCLUIDA', 'CANCELADA'] } },
                 orderBy: { prazo: 'asc' },
                 include: { responsavel: { select: { nome: true } } }
             });
-            return msg.reply(this.formatTaskList(tasks, `📋 *Tarefas de ${target.nome}:*`, user.id, true));
+            return this.safeReply(msg, this.formatTaskList(tasks, `📋 *Tarefas de ${target.nome}:*`, user.id, true));
         }
 
         // AI Intent Analysis
@@ -1082,27 +1217,41 @@ Analise SOMENTE A ÚLTIMA MENSAGEM DO USUÁRIO para identificar se ela contém U
 REGRA CRÍTICA: Analise APENAS a última mensagem. O histórico serve SOMENTE para entender referências ("isso", "aquilo", "o mesmo").
 NUNCA crie tarefas a partir de mensagens antigas do histórico. Só crie tarefas se a ÚLTIMA MENSAGEM contiver uma ação.
 
+ABREVIAÇÕES COMUNS (interprete corretamente):
+- "hjj" ou "hj" = hoje
+- "amnh" = amanhã
+- "pf" = por favor
+- "vc" = você
+- "qd" / "qdo" = quando
+- "p/" / "pro" / "pra" = para
+- "msg" = mensagem
+- "seg" = segunda, "ter" = terça, "qua" = quarta, "qui" = quinta, "sex" = sexta
+
 Exemplos que SÃO tarefas (última mensagem contém ação):
-- "Colocar queijões" → tarefa: "Colocar queijões", assigned_to: null (para mim mesmo)
+- "Colocar queijões" → tarefa: "Colocar queijões", assigned_to: null
 - "Comprar leite" → tarefa: "Comprar leite", assigned_to: null
-- "Ligar pro João" → tarefa: "Ligar pro João", assigned_to: null
 - "Reunião às 15h" → tarefa: "Reunião" com data hoje 15h, assigned_to: null
 - "Lançar binder" → tarefa: "Lançar binder", assigned_to: null
 
 EXEMPLOS DE DELEGAÇÃO (tarefa para outra pessoa ou equipe):
-- "Uma tarefa para Vinícius, editar fotos dos cavalos" → tarefa: "Editar fotos dos cavalos", assigned_to: "Vinícius"
-- "Tarefa para João: preparar relatório" → tarefa: "Preparar relatório", assigned_to: "João"
-- "Nova tarefa para equipe Marketing: criar post" → tarefa: "Criar post", assigned_to_team: "Marketing"
-- "Pede pro Lucas fazer o orçamento" → tarefa: "Fazer o orçamento", assigned_to: "Lucas"
+- "Vinicius postar foto hjj as 18h" → tarefa: "Postar foto", assigned_to: "Vinícius", date: hoje 18h
+- "João preparar relatório" → tarefa: "Preparar relatório", assigned_to: "João"
+- "Pro Lucas fazer o orçamento" → tarefa: "Fazer o orçamento", assigned_to: "Lucas"
 - "Agenda reunião para o Victor amanhã" → tarefa: "Reunião", assigned_to: "Victor"
-- Se a pessoa mencionada NÃO existe na lista de usuários, use assigned_to com o nome mesmo (será criado depois).
+- "Tarefa para equipe Marketing: criar post" → tarefa: "Criar post", assigned_to_team: "Marketing"
+- "Wardogs atribuir foto" → tarefa: "Atribuir foto", assigned_to_team: "Wardogs"
+- "[NomeEquipe] [ação]" → se o nome bater com uma equipe cadastrada, assigned_to_team
+- "[NomePessoa] [ação]" → se bater com um usuário cadastrado, assigned_to
+- REGRA: Se a PRIMEIRA PALAVRA da mensagem for um nome de usuário ou equipe cadastrada, interprete como delegação.
+- Se a pessoa/equipe mencionada NÃO existe na lista, use o nome mesmo (será tratado depois).
 
 Exemplos que NÃO são tarefas (retorne tasks=[] e reply_message amigável):
 - "Oi", "Olá", "Bom dia", "E aí" → saudação
 - "Como funciona?" → pergunta sobre o sistema
 - "Obrigado", "Valeu" → agradecimento
 - "Ok", "Tá bom", "Beleza" → confirmação
-- "Mostrar equipes", "Ver tarefas" → comando do sistema (NÃO é tarefa)
+- "Mostrar equipes", "Ver tarefas", "lista", "hoje" → comando do sistema (NÃO é tarefa)
+- "Atribuir para X" sem descrever a tarefa → peça esclarecimento em reply_message
 
 REGRAS DE INTERPRETAÇÃO:
 1. **Contexto**: Use o histórico SOMENTE para entender referências na última mensagem (ex: "faz isso amanhã" → "isso" se refere ao que?). NUNCA puxe itens antigos do histórico para criar novas tarefas.
@@ -1199,9 +1348,7 @@ IMPORTANTE:
                 let assigneeName = user.nome;
 
                 if (t.assigned_to) {
-                    const targetUser = await prisma.user.findFirst({
-                        where: { nome: { contains: t.assigned_to, mode: 'insensitive' } }
-                    });
+                    const targetUser = await this.findUserFuzzy(t.assigned_to);
                     if (targetUser) {
                         assigneeId = targetUser.id;
                         assigneeName = targetUser.nome;
@@ -1211,10 +1358,7 @@ IMPORTANTE:
                 }
 
                 if (t.assigned_to_team) {
-                    const team = await prisma.team.findFirst({
-                        where: { nome: { contains: t.assigned_to_team, mode: 'insensitive' } },
-                        include: { members: { include: { user: true } } }
-                    });
+                    const team = await this.findTeamFuzzy(t.assigned_to_team);
                     if (team && team.members.length > 0) {
                         // Create task for each team member
                         for (const member of team.members) {
@@ -1229,7 +1373,7 @@ IMPORTANTE:
                                 recurrenceInterval: t.recurrence
                             });
                         }
-                        const names = team.members.map(m => m.user.nome).join(', ');
+                        const names = team.members.map((m: any) => m.user.nome).join(', ');
                         const dateStr = t.date ? new Date(t.date).toLocaleString('pt-BR', { timeZone: user.timezone, dateStyle: 'short', timeStyle: 'short' }) : 'Sem data';
                         responseText += `✅ *${t.title}*\n👥 Equipe ${team.nome}: ${names}\n📅 ${dateStr}\n\n`;
                         continue;
@@ -1365,7 +1509,7 @@ IMPORTANTE:
             response += `\n• "excluir usuário Nome"`;
         }
 
-        await msg.reply(response);
+        await this.safeReply(msg, response);
     }
 
     private async addMember(msg: Message, sender: any, text: string) {
@@ -1375,7 +1519,7 @@ IMPORTANTE:
         const parts = content.split(',').map(p => p.trim());
 
         if (parts.length < 2) {
-            return msg.reply('❌ Formato inválido.\nUse: *add membro Nome, 5511999999999*\nOu: *add membro Nome, 5511999999999, equipe NomeDaEquipe*');
+            return this.safeReply(msg, '❌ Formato inválido.\nUse: *add membro Nome, 5511999999999*\nOu: *add membro Nome, 5511999999999, equipe NomeDaEquipe*');
         }
 
         let teamName: string | null = null;
@@ -1388,7 +1532,7 @@ IMPORTANTE:
         const cleanPhone = phone.replace(/\D/g, '');
 
         if (cleanPhone.length < 10) {
-            return msg.reply('❌ Telefone inválido. Inclua DDD e código do país (ex: 5511...)');
+            return this.safeReply(msg, '❌ Telefone inválido. Inclua DDD e código do país (ex: 5511...)');
         }
 
         try {
@@ -1407,9 +1551,9 @@ IMPORTANTE:
                 }
             }
 
-            await msg.reply(`✅ Membro *${name}* adicionado${teamMsg}!`);
+            await this.safeReply(msg, `✅ Membro *${name}* adicionado${teamMsg}!`);
         } catch (e) {
-            await msg.reply('❌ Erro: Telefone já cadastrado ou inválido.');
+            await this.safeReply(msg, '❌ Erro: Telefone já cadastrado ou inválido.');
         }
     }
 
@@ -1418,22 +1562,22 @@ IMPORTANTE:
 
         const teamName = text.replace(/^(criar|nova) equipe\s+/i, '').trim();
         if (!teamName) {
-            return msg.reply('❌ Formato: *criar equipe NomeDaEquipe*');
+            return this.safeReply(msg, '❌ Formato: *criar equipe NomeDaEquipe*');
         }
 
         try {
             const existing = await prisma.team.findFirst({ where: { nome: { equals: teamName, mode: 'insensitive' } } });
             if (existing) {
-                return msg.reply(`⚠️ Equipe "${teamName}" já existe!`);
+                return this.safeReply(msg, `⚠️ Equipe "${teamName}" já existe!`);
             }
 
             await prisma.team.create({
                 data: { nome: teamName, admin_id: sender.id }
             });
-            await msg.reply(`✅ Equipe *${teamName}* criada!\nAdmin: ${sender.nome}\n\nPara adicionar membros:\n"add membro Nome, Tel, equipe ${teamName}"`);
+            await this.safeReply(msg, `✅ Equipe *${teamName}* criada!\nAdmin: ${sender.nome}\n\nPara adicionar membros:\n"add membro Nome, Tel, equipe ${teamName}"`);
         } catch (e) {
             console.error(e);
-            await msg.reply('❌ Erro ao criar equipe.');
+            await this.safeReply(msg, '❌ Erro ao criar equipe.');
         }
     }
 
@@ -1442,28 +1586,24 @@ IMPORTANTE:
 
         const match = text.match(/^mover\s+(?:membro\s+)?(.+?)\s+para\s+(?:equipe\s+)?(.+)$/i);
         if (!match) {
-            return msg.reply('❌ Formato: *mover membro Nome para equipe NomeDaEquipe*');
+            return this.safeReply(msg, '❌ Formato: *mover membro Nome para equipe NomeDaEquipe*');
         }
 
         const [, memberName, teamName] = match;
 
         try {
-            const targetUser = await prisma.user.findFirst({
-                where: { nome: { contains: memberName.trim(), mode: 'insensitive' } }
-            });
-            if (!targetUser) return msg.reply(`❌ Membro "${memberName}" não encontrado.`);
+            const targetUser = await this.findUserFuzzy(memberName.trim());
+            if (!targetUser) return this.safeReply(msg, `❌ Membro "${memberName}" não encontrado.`);
 
-            const team = await prisma.team.findFirst({
-                where: { nome: { contains: teamName.trim(), mode: 'insensitive' } }
-            });
-            if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
+            const team = await this.findTeamFuzzy(teamName.trim());
+            if (!team) return this.safeReply(msg, `❌ Equipe "${teamName}" não encontrada.`);
 
             await prisma.teamMember.deleteMany({ where: { user_id: targetUser.id } });
             await prisma.teamMember.create({ data: { team_id: team.id, user_id: targetUser.id } });
 
-            await msg.reply(`✅ *${targetUser.nome}* movido para equipe *${team.nome}*!`);
+            await this.safeReply(msg, `✅ *${targetUser.nome}* movido para equipe *${team.nome}*!`);
         } catch (e) {
-            await msg.reply('❌ Erro ao mover membro.');
+            await this.safeReply(msg, '❌ Erro ao mover membro.');
         }
     }
 
@@ -1472,29 +1612,22 @@ IMPORTANTE:
 
         const term = text.replace(/^(rm|remover) membro\s+/i, '').trim();
 
-        const targetUser = await prisma.user.findFirst({
-            where: {
-                OR: [
-                    { telefone_whatsapp: { contains: term } },
-                    { nome: { contains: term, mode: 'insensitive' } }
-                ]
-            }
-        });
+        const targetUser = await this.findUserFuzzy(term);
 
-        if (!targetUser) return msg.reply('❌ Usuário não encontrado.');
+        if (!targetUser) return this.safeReply(msg, '❌ Usuário não encontrado.');
 
         // Prevent removing someone with higher role
         if ((WhatsappService.ROLE_LEVEL[targetUser.role] ?? 0) >= (WhatsappService.ROLE_LEVEL[sender.role] ?? 0)) {
-            return msg.reply(`🔒 Você não pode remover *${targetUser.nome}* (${targetUser.role}). Nível igual ou superior ao seu.`);
+            return this.safeReply(msg, `🔒 Você não pode remover *${targetUser.nome}* (${targetUser.role}). Nível igual ou superior ao seu.`);
         }
 
         try {
             // Remove from all teams + delete user
             await prisma.teamMember.deleteMany({ where: { user_id: targetUser.id } });
             await prisma.user.delete({ where: { id: targetUser.id } });
-            await msg.reply(`🗑️ Membro *${targetUser.nome}* removido do sistema.`);
+            await this.safeReply(msg, `🗑️ Membro *${targetUser.nome}* removido do sistema.`);
         } catch (e) {
-            await msg.reply('❌ Não foi possível remover. O usuário pode ter tarefas vinculadas.');
+            await this.safeReply(msg, '❌ Não foi possível remover. O usuário pode ter tarefas vinculadas.');
         }
     }
 
@@ -1506,33 +1639,29 @@ IMPORTANTE:
         // "remover da equipe João da equipe Marketing" or "tirar da equipe João da equipe Marketing"
         const match = text.match(/^(?:remover|tirar) da equipe\s+(.+?)\s+(?:da equipe|de)\s+(.+)$/i);
         if (!match) {
-            return msg.reply('❌ Formato: *remover da equipe Nome da equipe NomeDaEquipe*');
+            return this.safeReply(msg, '❌ Formato: *remover da equipe Nome da equipe NomeDaEquipe*');
         }
 
         const [, memberName, teamName] = match;
 
         try {
-            const targetUser = await prisma.user.findFirst({
-                where: { nome: { contains: memberName.trim(), mode: 'insensitive' } }
-            });
-            if (!targetUser) return msg.reply(`❌ Membro "${memberName}" não encontrado.`);
+            const targetUser = await this.findUserFuzzy(memberName.trim());
+            if (!targetUser) return this.safeReply(msg, `❌ Membro "${memberName}" não encontrado.`);
 
-            const team = await prisma.team.findFirst({
-                where: { nome: { contains: teamName.trim(), mode: 'insensitive' } }
-            });
-            if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
+            const team = await this.findTeamFuzzy(teamName.trim());
+            if (!team) return this.safeReply(msg, `❌ Equipe "${teamName}" não encontrada.`);
 
             const deleted = await prisma.teamMember.deleteMany({
                 where: { user_id: targetUser.id, team_id: team.id }
             });
 
             if (deleted.count === 0) {
-                return msg.reply(`⚠️ *${targetUser.nome}* não é membro da equipe *${team.nome}*.`);
+                return this.safeReply(msg, `⚠️ *${targetUser.nome}* não é membro da equipe *${team.nome}*.`);
             }
 
-            await msg.reply(`✅ *${targetUser.nome}* removido da equipe *${team.nome}*. (Continua cadastrado no sistema)`);
+            await this.safeReply(msg, `✅ *${targetUser.nome}* removido da equipe *${team.nome}*. (Continua cadastrado no sistema)`);
         } catch (e) {
-            await msg.reply('❌ Erro ao remover da equipe.');
+            await this.safeReply(msg, '❌ Erro ao remover da equipe.');
         }
     }
 
@@ -1540,21 +1669,18 @@ IMPORTANTE:
         if (!await this.requireRole(msg, sender, 'ADMIN')) return;
 
         const teamName = text.replace(/^(deletar|excluir) equipe\s+/i, '').trim();
-        if (!teamName) return msg.reply('❌ Formato: *deletar equipe NomeDaEquipe*');
+        if (!teamName) return this.safeReply(msg, '❌ Formato: *deletar equipe NomeDaEquipe*');
 
         try {
-            const team = await prisma.team.findFirst({
-                where: { nome: { contains: teamName, mode: 'insensitive' } },
-                include: { members: true }
-            });
-            if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
+            const team = await this.findTeamFuzzy(teamName);
+            if (!team) return this.safeReply(msg, `❌ Equipe "${teamName}" não encontrada.`);
 
             await prisma.teamMember.deleteMany({ where: { team_id: team.id } });
             await prisma.team.delete({ where: { id: team.id } });
 
-            await msg.reply(`🗑️ Equipe *${team.nome}* deletada! (${team.members.length} membros ficaram sem equipe)`);
+            await this.safeReply(msg, `🗑️ Equipe *${team.nome}* deletada! (${team.members?.length || 0} membros ficaram sem equipe)`);
         } catch (e) {
-            await msg.reply('❌ Erro ao deletar equipe.');
+            await this.safeReply(msg, '❌ Erro ao deletar equipe.');
         }
     }
 
@@ -1562,26 +1688,19 @@ IMPORTANTE:
         if (!await this.requireRole(msg, sender, 'SUPER_ADMIN')) return;
 
         const term = text.replace(/^(excluir|deletar) usu[aá]rio\s+/i, '').trim();
-        if (!term) return msg.reply('❌ Formato: *excluir usuário Nome*');
+        if (!term) return this.safeReply(msg, '❌ Formato: *excluir usuário Nome*');
 
-        const targetUser = await prisma.user.findFirst({
-            where: {
-                OR: [
-                    { telefone_whatsapp: { contains: term } },
-                    { nome: { contains: term, mode: 'insensitive' } }
-                ]
-            }
-        });
+        const targetUser = await this.findUserFuzzy(term);
 
-        if (!targetUser) return msg.reply('❌ Usuário não encontrado.');
-        if (targetUser.id === sender.id) return msg.reply('❌ Você não pode excluir a si mesmo.');
+        if (!targetUser) return this.safeReply(msg, '❌ Usuário não encontrado.');
+        if (targetUser.id === sender.id) return this.safeReply(msg, '❌ Você não pode excluir a si mesmo.');
 
         try {
             await prisma.teamMember.deleteMany({ where: { user_id: targetUser.id } });
             await prisma.user.delete({ where: { id: targetUser.id } });
-            await msg.reply(`🗑️ Usuário *${targetUser.nome}* (${targetUser.role}) excluído permanentemente.`);
+            await this.safeReply(msg, `🗑️ Usuário *${targetUser.nome}* (${targetUser.role}) excluído permanentemente.`);
         } catch (e) {
-            await msg.reply('❌ Não foi possível excluir. O usuário pode ter tarefas/comentários vinculados.');
+            await this.safeReply(msg, '❌ Não foi possível excluir. O usuário pode ter tarefas/comentários vinculados.');
         }
     }
 
@@ -1589,12 +1708,10 @@ IMPORTANTE:
         if (!await this.requireRole(msg, sender, 'SUPER_ADMIN')) return;
 
         const name = text.replace(/^(promover|rebaixar)\s+/i, '').trim();
-        if (!name) return msg.reply(`❌ Formato: *${action === 'promote' ? 'promover' : 'rebaixar'} Nome*`);
+        if (!name) return this.safeReply(msg, `❌ Formato: *${action === 'promote' ? 'promover' : 'rebaixar'} Nome*`);
 
-        const targetUser = await prisma.user.findFirst({
-            where: { nome: { contains: name, mode: 'insensitive' } }
-        });
-        if (!targetUser) return msg.reply(`❌ Usuário "${name}" não encontrado.`);
+        const targetUser = await this.findUserFuzzy(name);
+        if (!targetUser) return this.safeReply(msg, `❌ Usuário "${name}" não encontrado.`);
 
         const levels = ['USER', 'ADMIN', 'SUPER_ADMIN'];
         const currentIdx = levels.indexOf(targetUser.role);
@@ -1602,7 +1719,7 @@ IMPORTANTE:
 
         if (newIdx < 0 || newIdx >= levels.length) {
             const limit = action === 'promote' ? 'máximo (SUPER_ADMIN)' : 'mínimo (USER)';
-            return msg.reply(`⚠️ *${targetUser.nome}* já está no nível ${limit}.`);
+            return this.safeReply(msg, `⚠️ *${targetUser.nome}* já está no nível ${limit}.`);
         }
 
         const newRole = levels[newIdx];
@@ -1612,18 +1729,13 @@ IMPORTANTE:
         });
 
         const arrow = action === 'promote' ? '⬆️' : '⬇️';
-        await msg.reply(`${arrow} *${targetUser.nome}* alterado: ${targetUser.role} → *${newRole}*`);
+        await this.safeReply(msg, `${arrow} *${targetUser.nome}* alterado: ${targetUser.role} → *${newRole}*`);
     }
 
     private async assignTaskCommand(msg: Message, sender: any, text: string) {
-        if (!await this.requireRole(msg, sender, 'ADMIN')) return;
-
-        // Formats:
-        // "tarefa para João: Fazer relatório até amanhã"
-        // "tarefa para equipe Marketing: Revisar campanha"
         const match = text.match(/^(?:tarefa|task) para\s+(.+?):\s+(.+)$/i);
         if (!match) {
-            return msg.reply('❌ Formato:\n• *tarefa para Nome: descrição*\n• *tarefa para equipe NomeDaEquipe: descrição*');
+            return this.safeReply(msg, '❌ Formato:\n• *tarefa para Nome: descrição*\n• *tarefa para equipe NomeDaEquipe: descrição*');
         }
 
         const [, target, description] = match;
@@ -1631,13 +1743,10 @@ IMPORTANTE:
 
         if (isTeamTarget) {
             const teamName = target.replace(/^(equipe|time)\s+/i, '').trim();
-            const team = await prisma.team.findFirst({
-                where: { nome: { contains: teamName, mode: 'insensitive' } },
-                include: { members: { include: { user: true } } }
-            });
+            const team = await this.findTeamFuzzy(teamName);
 
-            if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
-            if (team.members.length === 0) return msg.reply(`⚠️ Equipe *${team.nome}* não tem membros.`);
+            if (!team) return this.safeReply(msg, `❌ Equipe "${teamName}" não encontrada.`);
+            if (team.members.length === 0) return this.safeReply(msg, `⚠️ Equipe *${team.nome}* não tem membros.`);
 
             let created = 0;
             for (const member of team.members) {
@@ -1654,13 +1763,11 @@ IMPORTANTE:
                 created++;
             }
 
-            await msg.reply(`✅ Tarefa criada para *${created} membros* da equipe *${team.nome}*:\n📝 *${description.trim()}*`);
+            await this.safeReply(msg, `✅ Tarefa criada para *${created} membros* da equipe *${team.nome}*:\n📝 *${description.trim()}*`);
         } else {
-            const targetUser = await prisma.user.findFirst({
-                where: { nome: { contains: target.trim(), mode: 'insensitive' } }
-            });
+            const targetUser = await this.findUserFuzzy(target.trim());
 
-            if (!targetUser) return msg.reply(`❌ Usuário "${target}" não encontrado.`);
+            if (!targetUser) return this.safeReply(msg, `❌ Usuário "${target}" não encontrado.`);
 
             const newTask = await this.taskService.createTask({
                 titulo: description.trim(),
@@ -1672,30 +1779,25 @@ IMPORTANTE:
                 recurrenceInterval: undefined
             });
 
-            await msg.reply(`✅ Tarefa atribuída a *${targetUser.nome}*:\n📝 *${newTask.titulo}*`);
+            await this.safeReply(msg, `✅ Tarefa atribuída a *${targetUser.nome}*:\n📝 *${newTask.titulo}*`);
         }
     }
 
     private async teamTasksCommand(msg: Message, sender: any, text: string) {
-        if (!await this.requireRole(msg, sender, 'ADMIN')) return;
-
         const teamName = text.replace(/^tarefas (da equipe|do time)\s+/i, '').trim();
-        if (!teamName) return msg.reply('❌ Formato: *tarefas da equipe NomeDaEquipe*');
+        if (!teamName) return this.safeReply(msg, '❌ Formato: *tarefas da equipe NomeDaEquipe*');
 
-        const team = await prisma.team.findFirst({
-            where: { nome: { contains: teamName, mode: 'insensitive' } },
-            include: { members: { include: { user: true } } }
-        });
+        const team = await this.findTeamFuzzy(teamName);
 
-        if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
+        if (!team) return this.safeReply(msg, `❌ Equipe "${teamName}" não encontrada.`);
 
-        const memberIds = team.members.map(m => m.user_id);
-        if (memberIds.length === 0) return msg.reply(`⚠️ Equipe *${team.nome}* não tem membros.`);
+        const memberIds = team.members.map((m: any) => m.user_id);
+        if (memberIds.length === 0) return this.safeReply(msg, `⚠️ Equipe *${team.nome}* não tem membros.`);
 
         const tasks = await prisma.task.findMany({
             where: {
                 responsavel_id: { in: memberIds },
-                status: { not: 'CONCLUIDA' }
+                status: { notIn: ['CONCLUIDA', 'CANCELADA'] }
             },
             include: { responsavel: { select: { nome: true } } },
             orderBy: { prazo: 'asc' },
@@ -1703,17 +1805,10 @@ IMPORTANTE:
         });
 
         if (tasks.length === 0) {
-            return msg.reply(`✨ Equipe *${team.nome}* não tem tarefas pendentes!`);
+            return this.safeReply(msg, `✨ Equipe *${team.nome}* não tem tarefas pendentes!`);
         }
 
-        let response = `📋 *Tarefas da equipe ${team.nome}* (${tasks.length}):\n\n`;
-        tasks.forEach((t, i) => {
-            const prazo = t.prazo ? new Date(t.prazo).toLocaleDateString('pt-BR') : 'Sem data';
-            const prioridade = t.prioridade === 'ALTA' ? '🔴' : t.prioridade === 'MEDIA' ? '🟡' : '🟢';
-            response += `${i + 1}. ${prioridade} *${t.titulo}*\n   👤 ${(t as any).responsavel?.nome || '?'} | 📅 ${prazo}\n\n`;
-        });
-
-        await msg.reply(response.trim());
+        return this.safeReply(msg, this.formatTaskList(tasks, `📋 *Tarefas da equipe ${team.nome}:*`, sender.id, true));
     }
 }
 
