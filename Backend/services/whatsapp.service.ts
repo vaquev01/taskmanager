@@ -729,6 +729,15 @@ export class WhatsappService {
             return;
         }
 
+        // Intercept greetings — send menu, don't waste AI call
+        const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'e aí', 'e ai', 'hey', 'hello', 'hi', 'fala', 'salve', 'eae'];
+        if (greetings.includes(lower.trim())) {
+            await msg.reply('Oi! Como posso ajudar? 😊');
+            await this.sendMainMenu(msg);
+            await this.updateHistory(user.id, 'assistant', 'Oi! Como posso ajudar?');
+            return;
+        }
+
         // Persona Switching
         if (lower.startsWith('/persona') || lower.startsWith('ser ')) {
             const requested = lower.replace(/^\/persona|ser /g, '').trim().toUpperCase().replace(/\s+/g, '_');
@@ -761,7 +770,9 @@ export class WhatsappService {
         }
 
         // Team Management
-        if (lower === 'equipe' || lower === 'time' || lower === 'equipes' || lower === 'times') {
+        if (lower === 'equipe' || lower === 'time' || lower === 'equipes' || lower === 'times'
+            || lower.includes('mostrar equipe') || lower.includes('ver equipe') || lower.includes('listar equipe')
+            || lower.includes('mostrar time') || lower.includes('ver time') || lower.includes('listar time')) {
             await this.listTeam(msg);
             return;
         }
@@ -873,24 +884,29 @@ TABELA DE REFERÊNCIA DE DATAS(próximos 7 dias):
 ${dateRef.join('\n')}
 
 SUA MISSÃO:
-Analise o HISTÓRICO e a última mensagem para identificar UMA OU MAIS tarefas.
+Analise SOMENTE A ÚLTIMA MENSAGEM DO USUÁRIO para identificar se ela contém UMA OU MAIS tarefas.
 
-REGRA DE OURO: Na DÚVIDA, SEMPRE crie a tarefa. Qualquer frase que pareça uma ação, atividade, lembrete ou coisa a fazer DEVE virar tarefa.
-Exemplos que SÃO tarefas:
+REGRA CRÍTICA: Analise APENAS a última mensagem. O histórico serve SOMENTE para entender referências ("isso", "aquilo", "o mesmo").
+NUNCA crie tarefas a partir de mensagens antigas do histórico. Só crie tarefas se a ÚLTIMA MENSAGEM contiver uma ação.
+
+Exemplos que SÃO tarefas (última mensagem contém ação):
 - "Colocar queijões" → tarefa: "Colocar queijões"
 - "Comprar leite" → tarefa: "Comprar leite"
 - "Ligar pro João" → tarefa: "Ligar pro João"
 - "Reunião às 15h" → tarefa: "Reunião" com data hoje 15h
 - "Pagar conta de luz" → tarefa: "Pagar conta de luz"
+- "Lançar binder" → tarefa: "Lançar binder"
 
-Exemplos que NÃO são tarefas (retorne lista vazia):
-- "Oi", "Olá", "Bom dia" → saudação, reply_message amigável
+Exemplos que NÃO são tarefas (retorne tasks=[] e reply_message amigável):
+- "Oi", "Olá", "Bom dia", "E aí" → saudação
 - "Como funciona?" → pergunta sobre o sistema
-- "Obrigado" → agradecimento
+- "Obrigado", "Valeu" → agradecimento
+- "Ok", "Tá bom", "Beleza" → confirmação
+- "Mostrar equipes", "Ver tarefas" → comando do sistema (NÃO é tarefa)
 
 REGRAS DE INTERPRETAÇÃO:
-1. **Contexto**: Use o histórico!
-2. **Múltiplas Tarefas**: "Fazer X e Y" = DUAS tarefas separadas.
+1. **Contexto**: Use o histórico SOMENTE para entender referências na última mensagem (ex: "faz isso amanhã" → "isso" se refere ao que?). NUNCA puxe itens antigos do histórico para criar novas tarefas.
+2. **Múltiplas Tarefas**: "Fazer X e Y" = DUAS tarefas separadas (somente se estiver na ÚLTIMA mensagem).
 3. **Datas OBRIGATÓRIAS**:
    - Consulte a TABELA DE REFERÊNCIA acima para mapear dias.
    - "hoje" = ${dateRef[0]?.split('= ')[1] || 'use table'}
