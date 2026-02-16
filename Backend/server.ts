@@ -33,12 +33,13 @@ app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(morgan('dev'));
 app.use(express.json());
 
-// Rate Limiter
+// Rate Limiter (skip whatsapp/status which has its own limiter)
 const globalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 200,
+    max: 1000,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => req.path.startsWith('/api/whatsapp'),
     message: { error: 'Muitas requisições, tente novamente mais tarde.' }
 });
 app.use('/api', globalLimiter);
