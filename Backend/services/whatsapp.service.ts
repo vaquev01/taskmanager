@@ -333,7 +333,7 @@ export class WhatsappService {
 
             this.initializeEvents();
 
-            console.log('🚀 Starting Client.initialize()...');
+            console.log('🚀 Starting Client.initialize()... [code v3-safeReply]');
 
             // Timeout: if init takes more than 90s, force restart
             this.clearInitTimeout();
@@ -384,20 +384,29 @@ export class WhatsappService {
         return true;
     }
 
-    // Safe reply: try msg.reply, fallback to client.sendMessage
+    // Safe reply: try msg.reply with timeout, fallback to client.sendMessage
     private async safeReply(msg: Message, text: string): Promise<void> {
+        const chatId = msg.from;
+        console.log(`📤 [safeReply] Attempting reply to ${chatId} (${text.substring(0, 40)}...)`);
+
+        // Try msg.reply with 10s timeout
         try {
-            await msg.reply(text);
-            console.log(`✅ [safeReply] replied OK (${text.substring(0, 50)}...)`);
-        } catch (replyErr) {
-            console.warn(`⚠️ [safeReply] msg.reply failed:`, replyErr);
-            try {
-                const chatId = msg.from || (await msg.getContact()).id._serialized;
-                await this.client.sendMessage(chatId, text);
-                console.log(`✅ [safeReply] sendMessage fallback OK`);
-            } catch (sendErr) {
-                console.error(`❌ [safeReply] BOTH reply methods failed:`, sendErr);
-            }
+            await Promise.race([
+                msg.reply(text),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('reply timeout 10s')), 10000))
+            ]);
+            console.log(`✅ [safeReply] msg.reply OK`);
+            return;
+        } catch (replyErr: any) {
+            console.warn(`⚠️ [safeReply] msg.reply failed: ${replyErr?.message || replyErr}`);
+        }
+
+        // Fallback: client.sendMessage directly
+        try {
+            await this.client.sendMessage(chatId, text);
+            console.log(`✅ [safeReply] sendMessage fallback OK`);
+        } catch (sendErr: any) {
+            console.error(`❌ [safeReply] BOTH failed: ${sendErr?.message || sendErr}`);
         }
     }
 
