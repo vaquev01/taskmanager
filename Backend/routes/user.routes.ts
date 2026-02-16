@@ -101,7 +101,7 @@ router.post('/', validateBody(createUserSchema), async (req, res) => {
 router.put('/:id', validateBody(updateUserSchema), async (req, res) => {
     try {
         const { id } = req.params;
-        const { nome, email, telefone_whatsapp, avatar, timezone, dailySummaryTime } = req.body;
+        const { nome, email, telefone_whatsapp, avatar, timezone, dailySummaryTime, role } = req.body;
 
         const user = await prisma.user.update({
             where: { id },
@@ -111,7 +111,8 @@ router.put('/:id', validateBody(updateUserSchema), async (req, res) => {
                 telefone_whatsapp,
                 avatar,
                 timezone,
-                dailySummaryTime
+                dailySummaryTime,
+                ...(role && { role })
             }
         });
 
