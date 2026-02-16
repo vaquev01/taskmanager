@@ -16,6 +16,7 @@ enum TaskStatus {
   PENDENTE
   EM_PROGRESSO
   CONCLUIDA
+  CANCELADA
 }
 
 enum TaskPriority {

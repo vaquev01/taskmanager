@@ -72,6 +72,43 @@ export class WhatsappService {
     private qrAttempts: number = 0;
     private maxQrAttempts: number = 10;
     private initTimeout: ReturnType<typeof setTimeout> | null = null;
+    // Store last listed tasks per user so they can reference by number
+    private lastTaskList: Map<string, any[]> = new Map();
+
+    private static STATUS_ICON: Record<string, string> = {
+        'PENDENTE': '🔵',
+        'EM_PROGRESSO': '🟡',
+        'CONCLUIDA': '✅',
+        'CANCELADA': '❌'
+    };
+
+    private static PRIORITY_ICON: Record<string, string> = {
+        'ALTA': '🔴',
+        'MEDIA': '🟠',
+        'BAIXA': '🟢'
+    };
+
+    private formatTaskList(tasks: any[], title: string, userId: string, showResponsible: boolean = false): string {
+        this.lastTaskList.set(userId, tasks);
+        if (tasks.length === 0) return `${title}\n\n✨ Nenhuma tarefa encontrada.`;
+
+        const lines = tasks.map((t, i) => {
+            const num = `*${i + 1}.*`;
+            const statusIcon = WhatsappService.STATUS_ICON[t.status] || '⚪';
+            const prioIcon = WhatsappService.PRIORITY_ICON[t.prioridade] || '';
+            const time = t.prazo ? new Date(t.prazo).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }) : 'Sem data';
+            const responsible = showResponsible && t.responsavel ? ` 👤 ${t.responsavel.nome}` : '';
+            return `${num} ${statusIcon} *${t.titulo}*\n    ${prioIcon} ${t.prioridade} · 📅 ${time}${responsible}`;
+        });
+
+        let msg = `${title}\n\n${lines.join('\n\n')}`;
+        msg += `\n\n━━━━━━━━━━━━━━━━━`;
+        msg += `\n💡 *Ações rápidas:*`;
+        msg += `\n• *feito 1* — concluir tarefa 1`;
+        msg += `\n• *cancelar 2* — cancelar tarefa 2`;
+        msg += `\n• *iniciar 3* — iniciar tarefa 3`;
+        return msg;
+    }
 
     constructor() {
         this.taskService = new TaskService();
@@ -442,21 +479,36 @@ export class WhatsappService {
 
         // Dashboard Link
         if (selected.includes('💻 Abrir Painel (Web)')) {
-            return reply('🔗 *Acesse seu Painel TaskFlow:*\nhttp://localhost:5173');
+            const url = process.env.RAILWAY_PUBLIC_DOMAIN
+                ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+                : (process.env.APP_URL || 'http://localhost:5173');
+            return reply(`🔗 *Acesse seu Painel TaskFlow:*\n${url}`);
         }
 
         const lower = selected.toLowerCase();
 
         if (lower.includes('hoje')) {
-            const tasks = await this.taskService.getTasksForToday(user.id);
-            if (tasks.length === 0) return reply('✨ Tudo limpo por hoje!');
-            return reply('📅 *Hoje:*\n' + tasks.map((t: any) => `▫️ ${t.titulo}`).join('\n'));
+            const tasks = await prisma.task.findMany({
+                where: { responsavel_id: user.id, status: { not: TaskStatus.CONCLUIDA } },
+                orderBy: { prazo: 'asc' },
+                include: { responsavel: { select: { nome: true } } }
+            });
+            const tz = user.timezone || 'America/Sao_Paulo';
+            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+            const todayTasks = tasks.filter(t => {
+                if (!t.prazo) return false;
+                return new Date(t.prazo).toLocaleDateString('en-CA', { timeZone: tz }) === todayStr;
+            });
+            return reply(this.formatTaskList(todayTasks, '📅 *Tarefas de Hoje:*', user.id));
         }
 
         if (lower.includes('pendentes') || lower.includes('lista')) {
-            const tasks = await this.taskService.listUserTasks(user.id);
-            if (tasks.length === 0) return reply('✅ Nenhuma tarefa pendente.');
-            return reply('📋 *Pendentes:*\n' + tasks.map((t: any) => `▫️ ${t.titulo} (${t.prazo ? new Date(t.prazo).toLocaleDateString() : 'Sem data'})`).join('\n'));
+            const tasks = await prisma.task.findMany({
+                where: { responsavel_id: user.id, status: { notIn: [TaskStatus.CONCLUIDA, TaskStatus.CANCELADA] } },
+                orderBy: { prazo: 'asc' },
+                include: { responsavel: { select: { nome: true } } }
+            });
+            return reply(this.formatTaskList(tasks, '📋 *Tarefas Pendentes:*', user.id));
         }
 
         if (lower.includes('equipe')) {
@@ -822,19 +874,85 @@ export class WhatsappService {
         }
 
         if (lower === 'hoje') {
-            const tasks = await this.taskService.getTasksForToday(user.id, user.timezone || 'America/Sao_Paulo');
-            if (tasks.length === 0) return msg.reply('✨ Tudo limpo por hoje!');
-            const lines = tasks.map(t => {
-                const time = t.prazo ? new Date(t.prazo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: user.timezone || 'America/Sao_Paulo' }) : '';
-                return `▫️ ${t.titulo}${time ? ` (${time})` : ''} `;
+            const tz = user.timezone || 'America/Sao_Paulo';
+            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+            const tasks = await prisma.task.findMany({
+                where: { responsavel_id: user.id, status: { notIn: ['CONCLUIDA', 'CANCELADA'] } },
+                orderBy: { prazo: 'asc' },
+                include: { responsavel: { select: { nome: true } } }
             });
-            return msg.reply('📅 *Hoje:*\n' + lines.join('\n'));
+            const todayTasks = tasks.filter(t => {
+                if (!t.prazo) return false;
+                return new Date(t.prazo).toLocaleDateString('en-CA', { timeZone: tz }) === todayStr;
+            });
+            return msg.reply(this.formatTaskList(todayTasks, '📅 *Tarefas de Hoje:*', user.id));
         }
 
-        if (lower === 'lista' || lower === 'minhas tarefas') {
-            const tasks = await this.taskService.listUserTasks(user.id);
-            if (tasks.length === 0) return msg.reply('✅ Nenhuma tarefa pendente.');
-            return msg.reply('📋 *Pendentes:*\n' + tasks.map(t => `▫️ ${t.titulo} (${t.prazo ? new Date(t.prazo).toLocaleDateString() : 'Sem data'})`).join('\n'));
+        if (lower === 'lista' || lower === 'minhas tarefas' || lower === 'pendentes' || lower === 'tarefas') {
+            const tasks = await prisma.task.findMany({
+                where: { responsavel_id: user.id, status: { notIn: ['CONCLUIDA', 'CANCELADA'] } },
+                orderBy: { prazo: 'asc' },
+                include: { responsavel: { select: { nome: true } } }
+            });
+            return msg.reply(this.formatTaskList(tasks, '📋 *Tarefas Pendentes:*', user.id));
+        }
+
+        if (lower === 'todas' || lower === 'todas as tarefas' || lower === 'historico' || lower === 'histórico') {
+            const tasks = await prisma.task.findMany({
+                where: { responsavel_id: user.id },
+                orderBy: { prazo: 'desc' },
+                take: 20,
+                include: { responsavel: { select: { nome: true } } }
+            });
+            return msg.reply(this.formatTaskList(tasks, '� *Todas as Tarefas (20 últimas):*', user.id));
+        }
+
+        if (lower === 'concluidas' || lower === 'concluídas' || lower === 'feitas') {
+            const tasks = await prisma.task.findMany({
+                where: { responsavel_id: user.id, status: 'CONCLUIDA' },
+                orderBy: { updated_at: 'desc' },
+                take: 15,
+                include: { responsavel: { select: { nome: true } } }
+            });
+            return msg.reply(this.formatTaskList(tasks, '✅ *Tarefas Concluídas:*', user.id));
+        }
+
+        // Status change commands: feito/concluir/cancelar/iniciar/reabrir + number
+        const statusMatch = lower.match(/^(feito|concluir|concluida|cancelar|iniciar|começar|reabrir|pendente)\s+(\d+)$/);
+        if (statusMatch) {
+            const action = statusMatch[1];
+            const num = parseInt(statusMatch[2]) - 1;
+            const cachedTasks = this.lastTaskList.get(user.id);
+            if (!cachedTasks || num < 0 || num >= cachedTasks.length) {
+                return msg.reply('⚠️ Número inválido. Digite *hoje* ou *lista* primeiro para ver as tarefas numeradas.');
+            }
+            const task = cachedTasks[num];
+            let newStatus: string;
+            let statusLabel: string;
+            if (['feito', 'concluir', 'concluida'].includes(action)) {
+                newStatus = 'CONCLUIDA'; statusLabel = '✅ Concluída';
+            } else if (action === 'cancelar') {
+                newStatus = 'CANCELADA'; statusLabel = '❌ Cancelada';
+            } else if (['iniciar', 'começar'].includes(action)) {
+                newStatus = 'EM_PROGRESSO'; statusLabel = '🟡 Em Progresso';
+            } else {
+                newStatus = 'PENDENTE'; statusLabel = '� Pendente';
+            }
+            await prisma.task.update({ where: { id: task.id }, data: { status: newStatus as any } });
+            return msg.reply(`${statusLabel}: *${task.titulo}*`);
+        }
+
+        // Filter: tarefas de [nome]
+        if (lower.startsWith('tarefas de ') && !lower.startsWith('tarefas de hoje')) {
+            const nome = text.substring(11).trim();
+            const target = await prisma.user.findFirst({ where: { nome: { contains: nome, mode: 'insensitive' } } });
+            if (!target) return msg.reply(`⚠️ Usuário "${nome}" não encontrado.`);
+            const tasks = await prisma.task.findMany({
+                where: { responsavel_id: target.id, status: { notIn: ['CONCLUIDA', 'CANCELADA'] } },
+                orderBy: { prazo: 'asc' },
+                include: { responsavel: { select: { nome: true } } }
+            });
+            return msg.reply(this.formatTaskList(tasks, `📋 *Tarefas de ${target.nome}:*`, user.id, true));
         }
 
         // AI Intent Analysis
@@ -983,6 +1101,19 @@ IMPORTANTE:
                 if (t.date_missing) {
                     hasMissingDate = true;
                     responseText += `⚠️ * ${t.title || 'Tarefa'}*: Faltou a data.\n`;
+                    continue;
+                }
+
+                // Anti-duplicate: skip if same title already exists for user
+                const existing = await prisma.task.findFirst({
+                    where: {
+                        responsavel_id: user.id,
+                        titulo: { equals: t.title || 'Nova Tarefa', mode: 'insensitive' },
+                        status: { notIn: ['CONCLUIDA', 'CANCELADA'] }
+                    }
+                });
+                if (existing) {
+                    responseText += `⚠️ *${t.title}* já existe nas suas tarefas.\n\n`;
                     continue;
                 }
 
