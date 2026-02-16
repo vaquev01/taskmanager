@@ -77,6 +77,10 @@ export class WhatsappService {
     private qrAttempts: number = 0;
     private maxQrAttempts: number = 10;
     private initTimeout: ReturnType<typeof setTimeout> | null = null;
+    private sendPipeline: Promise<void> = Promise.resolve();
+    private consecutiveProtocolTimeouts: number = 0;
+    private readonly maxConsecutiveProtocolTimeouts: number = 3;
+    private recoveringFromProtocolTimeout: boolean = false;
     // Store last listed tasks per user so they can reference by number
     private lastTaskList: Map<string, any[]> = new Map();
 
@@ -147,6 +151,9 @@ export class WhatsappService {
         this.isReady = false;
         this.qrCode = null;
         this.clearInitTimeout();
+        this.sendPipeline = Promise.resolve();
+        this.consecutiveProtocolTimeouts = 0;
+        this.recoveringFromProtocolTimeout = false;
 
         // 1. Try graceful destroy
         try {
@@ -326,6 +333,7 @@ export class WhatsappService {
                 puppeteer: {
                     executablePath: chromiumPath,
                     headless: true,
+                    protocolTimeout: 120000,
                     args: [
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
@@ -342,7 +350,7 @@ export class WhatsappService {
 
             this.initializeEvents();
 
-            console.log('🚀 Starting Client.initialize()... [code v4-fuzzy-edit]');
+            console.log('🚀 Starting Client.initialize()... [code v4.3-timeout-recovery]');
 
             // Timeout: if init takes more than 90s, force restart
             this.clearInitTimeout();
@@ -365,6 +373,58 @@ export class WhatsappService {
         if (this.initTimeout) {
             clearTimeout(this.initTimeout);
             this.initTimeout = null;
+        }
+    }
+
+    private async runInSendQueue<T>(task: () => Promise<T>): Promise<T> {
+        const next = this.sendPipeline.then(task, task);
+        this.sendPipeline = next.then(() => undefined, () => undefined);
+        return next;
+    }
+
+    private scheduleClientRecovery(reason: string) {
+        if (this.recoveringFromProtocolTimeout) return;
+
+        this.recoveringFromProtocolTimeout = true;
+        console.error(`♻️ Scheduling WhatsApp client recovery due to send timeout: ${reason}`);
+
+        setTimeout(async () => {
+            try {
+                await this.reload();
+            } catch (e) {
+                console.error('❌ Error during timeout recovery reload:', e);
+            } finally {
+                this.recoveringFromProtocolTimeout = false;
+                this.consecutiveProtocolTimeouts = 0;
+                this.sendPipeline = Promise.resolve();
+            }
+        }, 1500);
+    }
+
+    private async sendMessageWithTimeout(chatId: string, content: string | Poll, timeoutMs: number = 15000): Promise<void> {
+        try {
+            await this.runInSendQueue(async () => {
+                await Promise.race([
+                    this.client.sendMessage(chatId, content as any).then(() => undefined),
+                    new Promise<void>((_, reject) => setTimeout(() => reject(new Error(`send timeout ${timeoutMs}ms`)), timeoutMs))
+                ]);
+            });
+
+            this.consecutiveProtocolTimeouts = 0;
+        } catch (err: any) {
+            const message = err?.message || String(err);
+            const isProtocolTimeout = /Runtime\.callFunctionOn timed out|send timeout/i.test(message);
+
+            if (isProtocolTimeout) {
+                this.consecutiveProtocolTimeouts += 1;
+                console.warn(`⚠️ [sendMessageWithTimeout] timeout ${this.consecutiveProtocolTimeouts}/${this.maxConsecutiveProtocolTimeouts} for ${chatId}`);
+
+                if (this.consecutiveProtocolTimeouts >= this.maxConsecutiveProtocolTimeouts) {
+                    this.scheduleClientRecovery(message);
+                }
+            }
+
+            throw err;
         }
     }
 
@@ -412,7 +472,7 @@ export class WhatsappService {
 
         // Fallback: client.sendMessage directly
         try {
-            await this.client.sendMessage(chatId, text);
+            await this.sendMessageWithTimeout(chatId, text, 12000);
             console.log(`✅ [safeReply] sendMessage fallback OK`);
         } catch (sendErr: any) {
             console.error(`❌ [safeReply] BOTH failed: ${sendErr?.message || sendErr}`);
@@ -449,7 +509,7 @@ export class WhatsappService {
     public async sendMessage(to: string, message: string) {
         if (!this.isReady) return;
         try {
-            await this.client.sendMessage(to, message);
+            await this.sendMessageWithTimeout(to, message, 12000);
         } catch (error) {
             console.error('❌ Error sending WhatsApp message:', error);
         }
@@ -487,14 +547,14 @@ export class WhatsappService {
         const reply = async (text: string) => {
             try {
                 console.log(`📤 [pollReply] Sending to ${chatId}: ${text.substring(0, 60)}...`);
-                await this.client.sendMessage(chatId, text);
+                await this.sendMessageWithTimeout(chatId, text, 12000);
                 console.log(`✅ [pollReply] Sent OK`);
             } catch (err: any) {
                 console.error(`❌ [pollReply] sendMessage(${chatId}) failed: ${err?.message || err}`);
                 // Fallback: try voterId directly
-                try {
+                if (chatId !== voterId) try {
                     console.log(`📤 [pollReply] Fallback to voterId ${voterId}...`);
-                    await this.client.sendMessage(voterId, text);
+                    await this.sendMessageWithTimeout(voterId, text, 12000);
                     console.log(`✅ [pollReply] Fallback OK`);
                 } catch (err2: any) {
                     console.error(`❌ [pollReply] ALL failed: ${err2?.message || err2}`);
@@ -668,7 +728,7 @@ export class WhatsappService {
 
             // Use client.sendMessage instead of msg.reply for polls (more reliable)
             const chatId = msg.from || (await msg.getContact()).id._serialized;
-            await this.client.sendMessage(chatId, poll);
+            await this.sendMessageWithTimeout(chatId, poll, 15000);
             console.log('✅ [sendMainMenu] Poll sent OK');
         } catch (e) {
             console.error('❌ [sendMainMenu] Failed to send poll:', e);
@@ -676,7 +736,7 @@ export class WhatsappService {
             try {
                 const chatId = msg.from || (await msg.getContact()).id._serialized;
                 const textMenu = '🤖 *Menu TaskFlow*\n\nDigite um dos comandos:\n• *hoje* — Tarefas de hoje\n• *lista* — Tarefas pendentes\n• *equipe* — Ver equipe\n• *menu* — Este menu\n\nOu simplesmente escreva uma tarefa!';
-                await this.client.sendMessage(chatId, textMenu);
+                await this.sendMessageWithTimeout(chatId, textMenu, 12000);
                 console.log('✅ [sendMainMenu] Text fallback sent OK');
             } catch (fallbackErr) {
                 console.error('❌ [sendMainMenu] Text fallback also failed:', fallbackErr);
@@ -699,7 +759,7 @@ export class WhatsappService {
             messageSecret: Array.from({ length: 32 }, () => Math.floor(Math.random() * 256))
         });
 
-        await this.client.sendMessage(to, poll);
+        await this.sendMessageWithTimeout(to, poll, 15000);
     }
 
     // Map to store pending tasks from images waiting for confirmation
@@ -815,7 +875,7 @@ export class WhatsappService {
                         ], { allowMultipleAnswers: false, messageSecret: Array.from({ length: 32 }, () => Math.floor(Math.random() * 256)) });
 
                         const chatId = msg.from || (await msg.getContact()).id._serialized;
-                        await this.client.sendMessage(chatId, poll);
+                        await this.sendMessageWithTimeout(chatId, poll, 15000);
                         await this.updateHistory(user.id, 'assistant', `[Analisou imagem: ${analysis.title}]`);
                         return;
                     } else {
