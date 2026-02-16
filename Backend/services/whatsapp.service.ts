@@ -104,6 +104,7 @@ export class WhatsappService {
             this.isReady = false;
             // @ts-ignore
             qrcode.generate(qr, { small: true });
+            console.log(`🔍 RAW QR CODE (If terminal QR fails, copy this to a generator): ${qr}`);
         });
 
         this.client.on('ready', () => {
@@ -155,36 +156,50 @@ export class WhatsappService {
     }
 
     public async initialize() {
-        console.log('🔄 Initializing WhatsApp Client...');
+        if (this.isReady) {
+            console.log('⚠️ WhatsApp Client already ready. Skipping initialization.');
+            return;
+        }
 
+        console.log('🔄 Initializing WhatsApp Client...');
         const chromiumPath = findChromiumPath();
-        console.log(`🔍 Chromium path: ${chromiumPath || 'NOT FOUND'}`);
+        console.log(`🔍 Chromium path: ${chromiumPath || 'NOT FOUND (Using Puppeteer bundled)'}`);
 
         try {
             this.client = new Client({
-                authStrategy: new LocalAuth(),
+                restartOnAuthFail: true,
+                authStrategy: new LocalAuth({
+                    clientId: 'client-one',
+                    dataPath: path.join(__dirname, '..', '.wwebjs_auth')
+                }),
                 webVersionCache: WEB_VERSION_CACHE,
-                authTimeoutMs: 120000,
+                authTimeoutMs: 60000,
                 puppeteer: {
+                    executablePath: chromiumPath,
                     headless: true,
+                    dumpio: true, // IMPORTANT: Logs browser errors to console
                     args: [
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
-                        '--disable-gpu',
                         '--disable-dev-shm-usage',
+                        '--disable-accelerated-2d-canvas',
+                        '--no-first-run',
+                        '--no-zygote',
                         '--single-process',
-                        '--disable-extensions',
-                        '--no-zygote'
-                    ],
-                    executablePath: chromiumPath
+                        '--disable-gpu',
+                        '--disable-extensions'
+                    ]
                 }
             });
 
             this.initializeEvents();
+
+            console.log('🚀 Starting Client.initialize()...');
             await this.client.initialize();
+            console.log('✅ Client.initialize() called successfully.');
+
         } catch (error) {
-            console.error('❌ WhatsApp initialization failed:', (error as Error).message);
-            // Don't crash the server, just log
+            console.error('❌ WhatsApp initialization CRITICAL FAILURE:', error);
         }
     }
 
