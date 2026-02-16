@@ -507,6 +507,7 @@ export class WhatsappService {
         const options = [
             '📅 Minhas Tarefas de Hoje',
             '📋 Ver Todas Pendentes',
+            '📝 + Criar Nova Tarefa',
             '🎭 Mudar Personalidade',
             '👥 Equipe',
             '💻 Abrir Painel (Web)',
