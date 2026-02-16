@@ -20,8 +20,8 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { Task, FilterType, ViewMode, SortBy } from '../types';
 
 const fetchTasks = async (): Promise<Task[]> => {
-    const { data } = await api.get('/tasks');
-    return data;
+    const { data } = await api.get('/tasks?limit=100');
+    return data.data ?? data;
 };
 
 export const Dashboard = () => {

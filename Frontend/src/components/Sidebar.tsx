@@ -18,7 +18,7 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
 
     const { data: users } = useQuery({
         queryKey: ['users'],
-        queryFn: () => api.get('/users').then(r => r.data),
+        queryFn: () => api.get('/users').then(r => r.data.data ?? r.data),
     });
 
     const handleLogout = () => {

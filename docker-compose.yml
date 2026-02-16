@@ -14,6 +14,41 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - taskflow_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d taskflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: taskflow_backend
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://admin:password@db:5432/taskflow?schema=public
+      JWT_SECRET: ${JWT_SECRET:-change-this-in-production}
+      PORT: 4000
+      CORS_ORIGINS: http://localhost:5173,http://localhost:4173
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - taskflow_network
+
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: taskflow_frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - taskflow_network
 
 networks:
   taskflow_network:

@@ -169,12 +169,12 @@ export const OrganogramBoard = () => {
     // Queries
     const { data: teams = [], isLoading: isLoadingTeams } = useQuery<Team[]>({
         queryKey: ['teams'],
-        queryFn: () => api.get('/teams').then(r => r.data),
+        queryFn: () => api.get('/teams').then(r => r.data.data ?? r.data),
     });
 
     const { data: allUsers = [], isLoading: isLoadingUsers } = useQuery<User[]>({
         queryKey: ['users'],
-        queryFn: () => api.get('/users').then(r => r.data),
+        queryFn: () => api.get('/users').then(r => r.data.data ?? r.data),
     });
 
     // Mutations

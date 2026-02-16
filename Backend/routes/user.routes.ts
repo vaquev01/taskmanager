@@ -1,23 +1,38 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
+import { authMiddleware } from '../middleware/auth.middleware';
+import { createUserSchema, updateUserSchema } from '../schemas/user.schema';
+import { validateBody } from '../middleware/validate.middleware';
+import { stripPassword, stripPasswords } from '../lib/sanitize';
 
 const router = Router();
 
-// List all users
+router.use(authMiddleware);
+
+// List all users (with pagination)
 router.get('/', async (req, res) => {
     try {
-        const users = await prisma.user.findMany({
-            orderBy: { nome: 'asc' },
-            include: {
-                _count: {
-                    select: {
-                        tasksCreated: true,
-                        tasksResponsible: true,
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+        const skip = (page - 1) * limit;
+
+        const [users, total] = await Promise.all([
+            prisma.user.findMany({
+                orderBy: { nome: 'asc' },
+                include: {
+                    _count: {
+                        select: {
+                            tasksCreated: true,
+                            tasksResponsible: true,
+                        }
                     }
-                }
-            }
-        });
-        res.json(users);
+                },
+                skip,
+                take: limit,
+            }),
+            prisma.user.count(),
+        ]);
+        res.json({ data: stripPasswords(users), meta: { total, page, limit, totalPages: Math.ceil(total / limit) } });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch users' });
     }
@@ -40,7 +55,7 @@ router.get('/:id', async (req, res) => {
             }
         });
         if (!user) return res.status(404).json({ error: 'User not found' });
-        res.json(user);
+        res.json(stripPassword(user));
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch user' });
     }
@@ -48,14 +63,9 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create new user
-router.post('/', async (req, res) => {
+router.post('/', validateBody(createUserSchema), async (req, res) => {
     try {
         const { nome, email, telefone_whatsapp, avatar, timezone } = req.body;
-
-        // Validation
-        if (!nome || !telefone_whatsapp) {
-            return res.status(400).json({ error: 'Nome and Whatsapp are required' });
-        }
 
         const existingUser = await prisma.user.findFirst({
             where: {
@@ -80,7 +90,7 @@ router.post('/', async (req, res) => {
             }
         });
 
-        res.status(201).json(user);
+        res.status(201).json(stripPassword(user));
     } catch (error) {
         console.error('Create user error:', error);
         res.status(500).json({ error: 'Failed to create user' });
@@ -88,7 +98,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update user (Profile + Config)
-router.put('/:id', async (req, res) => {
+router.put('/:id', validateBody(updateUserSchema), async (req, res) => {
     try {
         const { id } = req.params;
         const { nome, email, telefone_whatsapp, avatar, timezone, dailySummaryTime } = req.body;
@@ -105,7 +115,7 @@ router.put('/:id', async (req, res) => {
             }
         });
 
-        res.json(user);
+        res.json(stripPassword(user));
     } catch (error) {
         console.error('Update user error:', error);
         res.status(500).json({ error: 'Failed to update user' });

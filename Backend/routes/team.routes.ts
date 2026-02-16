@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { z } from 'zod';
+import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
+
+router.use(authMiddleware);
 
 // Schema for creating/updating team
 const teamSchema = z.object({
@@ -10,23 +13,32 @@ const teamSchema = z.object({
     admin_id: z.string().uuid("Admin ID must be a valid UUID").optional() // Optional for now
 });
 
-// List all teams with members
+// List all teams with members (with pagination)
 router.get('/', async (req, res) => {
     try {
-        const teams = await prisma.team.findMany({
-            include: {
-                members: {
-                    include: {
-                        user: true
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+        const skip = (page - 1) * limit;
+
+        const [teams, total] = await Promise.all([
+            prisma.team.findMany({
+                include: {
+                    members: {
+                        include: {
+                            user: true
+                        }
+                    },
+                    _count: {
+                        select: { members: true }
                     }
                 },
-                _count: {
-                    select: { members: true }
-                }
-            },
-            orderBy: { nome: 'asc' }
-        });
-        res.json(teams);
+                orderBy: { nome: 'asc' },
+                skip,
+                take: limit,
+            }),
+            prisma.team.count(),
+        ]);
+        res.json({ data: teams, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } });
     } catch (error) {
         console.error('Error fetching teams:', error);
         res.status(500).json({ error: 'Failed to fetch teams' });

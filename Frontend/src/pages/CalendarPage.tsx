@@ -11,7 +11,7 @@ export const CalendarPage = () => {
 
     const { data: tasks, isLoading } = useQuery({
         queryKey: ['tasks'],
-        queryFn: () => api.get('/tasks').then(r => r.data),
+        queryFn: () => api.get('/tasks?limit=100').then(r => r.data.data ?? r.data),
     });
 
     const year = currentDate.getFullYear();

@@ -1,12 +1,12 @@
-import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Router, Request, Response } from 'express';
+import { prisma } from '../lib/prisma';
 import { isAdmin, isSuperAdmin } from '../middleware/admin.middleware';
+import { stripPasswords } from '../lib/sanitize';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Global Stats (Super Admin)
-router.get('/stats', isSuperAdmin, async (req, res) => {
+router.get('/stats', ...isSuperAdmin, async (req: Request, res: Response) => {
     try {
         const [
             totalUsers,
@@ -38,12 +38,12 @@ router.get('/stats', isSuperAdmin, async (req, res) => {
 });
 
 // User Management (Admin)
-router.get('/users', isAdmin, async (req, res) => {
+router.get('/users', ...isAdmin, async (req: Request, res: Response) => {
     const users = await prisma.user.findMany({
         orderBy: { created_at: 'desc' },
         take: 50
     });
-    res.json(users);
+    res.json(stripPasswords(users));
 });
 
 export default router;

@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
+import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
+
+router.use(authMiddleware);
 
 // List all projects
 router.get('/', async (req, res) => {
@@ -32,6 +35,43 @@ router.post('/', async (req, res) => {
         res.status(201).json(project);
     } catch (error) {
         res.status(500).json({ error: 'Failed to create project' });
+    }
+});
+
+// Update project
+router.put('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nome, cor, team_id } = req.body;
+        const project = await prisma.project.update({
+            where: { id },
+            data: {
+                ...(nome !== undefined && { nome }),
+                ...(cor !== undefined && { cor }),
+                ...(team_id !== undefined && { team_id }),
+            }
+        });
+        res.json(project);
+    } catch (error) {
+        console.error('Update project error:', error);
+        res.status(500).json({ error: 'Failed to update project' });
+    }
+});
+
+// Delete project
+router.delete('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Unlink tasks from project before deleting
+        await prisma.task.updateMany({
+            where: { project_id: id },
+            data: { project_id: null }
+        });
+        await prisma.project.delete({ where: { id } });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete project error:', error);
+        res.status(500).json({ error: 'Failed to delete project' });
     }
 });
 

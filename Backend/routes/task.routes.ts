@@ -2,8 +2,12 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { TaskService } from '../services/task.service';
 import { z } from 'zod';
+import { authMiddleware } from '../middleware/auth.middleware';
+import { USER_SAFE_SELECT } from '../lib/sanitize';
 
 const router = Router();
+
+router.use(authMiddleware);
 
 // Validation schemas
 const createTaskSchema = z.object({
@@ -31,27 +35,36 @@ const updateTaskSchema = z.object({
     subtasks: z.array(z.object({ titulo: z.string(), done: z.boolean() })).optional(),
 }).passthrough();
 
-// List all tasks
+// List all tasks (with pagination)
 router.get('/', async (req, res) => {
     try {
-        const tasks = await prisma.task.findMany({
-            orderBy: { created_at: 'desc' },
-            include: {
-                responsavel: true,
-                criador: true,
-                project: true,
-                subtasks: true,
-                comments: { include: { user: true }, orderBy: { created_at: 'asc' } },
-            }
-        });
-        res.json(tasks);
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+        const skip = (page - 1) * limit;
+
+        const [tasks, total] = await Promise.all([
+            prisma.task.findMany({
+                orderBy: { created_at: 'desc' },
+                include: {
+                    responsavel: { select: USER_SAFE_SELECT },
+                    criador: { select: USER_SAFE_SELECT },
+                    project: true,
+                    subtasks: true,
+                    comments: { include: { user: { select: USER_SAFE_SELECT } }, orderBy: { created_at: 'asc' } },
+                },
+                skip,
+                take: limit,
+            }),
+            prisma.task.count(),
+        ]);
+        res.json({ data: tasks, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } });
     } catch (error) {
         console.error('Failed to fetch tasks:', error);
         res.status(500).json({ error: 'Failed to fetch tasks' });
     }
 });
 
-// Search tasks
+// Search tasks (MUST be before /:id to avoid matching 'search' as an ID)
 router.get('/search', async (req, res) => {
     try {
         const q = (req.query.q as string) || '';
@@ -65,12 +78,33 @@ router.get('/search', async (req, res) => {
                 ]
             },
             orderBy: { created_at: 'desc' },
-            include: { project: true, responsavel: true },
+            include: { project: true, responsavel: { select: USER_SAFE_SELECT } },
             take: 20,
         });
         res.json(tasks);
     } catch (error) {
         res.status(500).json({ error: 'Failed to search tasks' });
+    }
+});
+
+// Get task by ID
+router.get('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const task = await prisma.task.findUnique({
+            where: { id },
+            include: {
+                responsavel: { select: USER_SAFE_SELECT },
+                criador: { select: USER_SAFE_SELECT },
+                project: true,
+                subtasks: true,
+                comments: { include: { user: { select: USER_SAFE_SELECT } }, orderBy: { created_at: 'asc' } },
+            }
+        });
+        if (!task) return res.status(404).json({ error: 'Task not found' });
+        res.json(task);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch task' });
     }
 });
 
@@ -95,7 +129,7 @@ router.post('/', async (req, res) => {
                 subgrupo: subgrupo || null,
                 status: 'PENDENTE',
             },
-            include: { project: true, responsavel: true }
+            include: { project: true, responsavel: { select: USER_SAFE_SELECT } }
         });
         res.status(201).json(task);
     } catch (error) {
@@ -160,7 +194,7 @@ router.put('/:id', async (req, res) => {
                     }
                 }),
             },
-            include: { project: true, responsavel: true, subtasks: true, comments: { include: { user: true } } }
+            include: { project: true, responsavel: { select: USER_SAFE_SELECT }, subtasks: true, comments: { include: { user: { select: USER_SAFE_SELECT } } } }
         });
         res.json(task);
     } catch (error) {

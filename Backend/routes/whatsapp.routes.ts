@@ -7,7 +7,7 @@ export const whatsappRouter = (whatsappService: WhatsappService) => {
     router.get('/status', (req, res) => {
         res.json({
             isReady: whatsappService.isReady,
-            qrCode: whatsappService.qrCode
+            qrCode: whatsappService.qrCode,
         });
     });
 

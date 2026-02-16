@@ -43,6 +43,7 @@ export const useStore = create<AppState>()(
             name: 'taskflow-storage',
             partialize: (state) => ({
                 user: state.user,
+                token: state.token,
                 isAuthenticated: state.isAuthenticated,
                 theme: state.theme,
             }),

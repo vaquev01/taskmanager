@@ -20,17 +20,17 @@ export const TeamPage = () => {
 
     const { data: users, isLoading } = useQuery({
         queryKey: ['users'],
-        queryFn: () => api.get('/users').then(r => r.data),
+        queryFn: () => api.get('/users').then(r => r.data.data ?? r.data),
     });
 
     const { data: tasks } = useQuery({
         queryKey: ['tasks'],
-        queryFn: () => api.get('/tasks').then(r => r.data),
+        queryFn: () => api.get('/tasks?limit=100').then(r => r.data.data ?? r.data),
     });
 
     const { data: teams } = useQuery({
         queryKey: ['teams'],
-        queryFn: () => api.get('/teams').then(r => r.data),
+        queryFn: () => api.get('/teams').then(r => r.data.data ?? r.data),
     });
 
     const createTeamMutation = useMutation({

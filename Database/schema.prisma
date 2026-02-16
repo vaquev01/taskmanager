@@ -52,6 +52,7 @@ model User {
   comments          Comment[]
   reminders         Reminder[]
   chatHistory       ChatHistory[]
+  pushSubscriptions PushSubscription[]
 }
 
 model ChatHistory {
@@ -162,4 +163,15 @@ model Reminder {
 
   task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
   user       User     @relation(fields: [user_id], references: [id])
+}
+
+model PushSubscription {
+  id         String   @id @default(uuid())
+  user_id    String
+  endpoint   String   @unique
+  keys_p256dh String
+  keys_auth  String
+  created_at DateTime @default(now())
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }

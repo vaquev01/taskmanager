@@ -39,8 +39,8 @@ export function SettingsPage() {
 
     const checkWhatsappStatus = async () => {
         try {
-            await api.get('/whatsapp/status');
-            setWhatsappStatus('connected');
+            const { data } = await api.get('/whatsapp/status');
+            setWhatsappStatus(data.isReady ? 'connected' : 'disconnected');
         } catch (error) {
             setWhatsappStatus('disconnected');
         }

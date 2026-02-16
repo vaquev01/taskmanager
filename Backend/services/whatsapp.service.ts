@@ -65,6 +65,11 @@ export class WhatsappService {
     public qrCode: string | null = null;
     public isReady: boolean = false;
     private ffmpegPath: string;
+    private reconnectAttempts: number = 0;
+    private maxReconnectAttempts: number = 10;
+    private isInitializing: boolean = false;
+    private qrAttempts: number = 0;
+    private maxQrAttempts: number = 5;
 
     constructor() {
         this.taskService = new TaskService();
@@ -87,7 +92,12 @@ export class WhatsappService {
     }
 
     public async reload() {
-        console.log('🔄 Restarting WhatsApp Client...');
+        console.log('🔄 Restarting WhatsApp Client (manual)...');
+        this.reconnectAttempts = 0;
+        this.qrAttempts = 0;
+        this.isInitializing = false;
+        this.isReady = false;
+        this.qrCode = null;
         try {
             if (this.client) {
                 await this.client.destroy();
@@ -100,23 +110,30 @@ export class WhatsappService {
 
     private initializeEvents() {
         this.client.on('qr', (qr) => {
-            console.log('📱 Scan this QR Code to log in to WhatsApp:');
+            this.qrAttempts++;
+            console.log(`📱 QR Code generated (attempt ${this.qrAttempts}/${this.maxQrAttempts})`);
             this.qrCode = qr;
             this.isReady = false;
             // @ts-ignore
             qrcode.generate(qr, { small: true });
-            console.log(`🔍 RAW QR CODE (If terminal QR fails, copy this to a generator): ${qr}`);
+
+            if (this.qrAttempts >= this.maxQrAttempts) {
+                console.log('⚠️ Max QR attempts reached. Waiting for manual restart via /whatsapp/restart');
+            }
         });
 
         this.client.on('ready', () => {
             console.log('✅ WhatsApp Client is Ready!');
             this.isReady = true;
             this.qrCode = null;
+            this.reconnectAttempts = 0;
+            this.qrAttempts = 0;
         });
 
         this.client.on('authenticated', () => {
             console.log('🔑 WhatsApp Client Authenticated!');
             this.qrCode = null;
+            this.qrAttempts = 0;
         });
 
         this.client.on('loading_screen', (percent: number, message: string) => {
@@ -130,29 +147,50 @@ export class WhatsappService {
         this.client.on('disconnected', (reason) => {
             console.log('❌ WhatsApp Client Disconnected:', reason);
             this.isReady = false;
-            // Auto-reconnect
-            console.log('🔄 Attempting to reconnect in 5s...');
-            setTimeout(() => {
-                this.client.initialize();
-            }, 5000);
+            this.qrCode = null;
+
+            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                console.log('� Max reconnect attempts reached. Use /whatsapp/restart to retry.');
+                return;
+            }
+
+            this.reconnectAttempts++;
+            const delay = Math.min(5000 * Math.pow(2, this.reconnectAttempts - 1), 120000);
+            console.log(`🔄 Reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay / 1000}s...`);
+
+            setTimeout(async () => {
+                try {
+                    await this.client.destroy();
+                } catch (e) {
+                    // Client may already be destroyed
+                }
+                this.isInitializing = false;
+                await this.initialize();
+            }, delay);
         });
 
         this.client.on('auth_failure', () => {
-            console.log('❌ WhatsApp Auth Failed — clearing session...');
+            console.log('❌ WhatsApp Auth Failed — will show new QR code on next init.');
             this.isReady = false;
             this.qrCode = null;
-            const authPath = path.join(__dirname, '..', '.wwebjs_auth');
-            if (fs.existsSync(authPath)) {
-                fs.rmSync(authPath, { recursive: true, force: true });
-            }
+            // Don't delete session folder — let whatsapp-web.js handle re-auth with new QR
+            // Only clear if truly corrupted (user can do manual restart)
         });
 
         this.client.on('message', async (msg) => {
-            await this.handleIncomingMessage(msg);
+            try {
+                await this.handleIncomingMessage(msg);
+            } catch (e) {
+                console.error('❌ Error handling message:', e);
+            }
         });
 
         this.client.on('vote_update', async (vote) => {
-            await this.handlePollVote(vote);
+            try {
+                await this.handlePollVote(vote);
+            } catch (e) {
+                console.error('❌ Error handling poll vote:', e);
+            }
         });
     }
 
@@ -162,6 +200,12 @@ export class WhatsappService {
             return;
         }
 
+        if (this.isInitializing) {
+            console.log('⚠️ WhatsApp Client already initializing. Skipping.');
+            return;
+        }
+
+        this.isInitializing = true;
         console.log('🔄 Initializing WhatsApp Client...');
         const chromiumPath = findChromiumPath();
         console.log(`🔍 Chromium path: ${chromiumPath || 'NOT FOUND (Using Puppeteer bundled)'}`);
@@ -201,6 +245,7 @@ export class WhatsappService {
 
         } catch (error) {
             console.error('❌ WhatsApp initialization CRITICAL FAILURE:', error);
+            this.isInitializing = false;
         }
     }
 
@@ -928,57 +973,6 @@ IMPORTANTE:
         } catch (e) {
             console.error(e);
             await msg.reply('❌ Erro ao criar equipe.');
-        }
-    }
-
-    private async handleAddMember(msg: Message, content: string) {
-        // "add membro [Nome], [Tel], equipe [Time]"
-        try {
-            const parts = content.replace('add membro', '').split(',').map(p => p.trim());
-            if (parts.length < 3) throw new Error('Formato inválido');
-
-            const memberName = parts[0];
-            const memberPhone = parts[1].replace(/\D/g, '');
-            const teamName = parts[2].replace('equipe', '').trim();
-
-            const team = await prisma.team.findFirst({ where: { nome: teamName } });
-            if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
-
-            // Create or Find User
-            let user = await prisma.user.findUnique({ where: { telefone_whatsapp: memberPhone } });
-            if (!user) {
-                user = await prisma.user.create({
-                    data: {
-                        nome: memberName,
-                        telefone_whatsapp: memberPhone,
-                        password_hash: '$2a$10$WkG/...' // Default hash or handle registration
-                    }
-                });
-            }
-
-            // Add to Team
-            await prisma.teamMember.create({
-                data: {
-                    team_id: team.id,
-                    user_id: user.id
-                }
-            });
-
-            await msg.reply(`✅ * ${user.nome}* adicionado à equipe * ${team.nome}* !`);
-
-        } catch (e) {
-            console.error(e);
-            await msg.reply('❌ Erro ao adicionar membro. Use: "add membro Nome, 551199999999, equipe Marketing"');
-        }
-    }
-
-    private async handleRemoveMember(msg: Message, content: string) {
-        // "remover membro [Nome/Tel] da equipe [Time]"
-        try {
-            // Simplified logic for example
-            await msg.reply('❌ Funcionalidade em manutenção.');
-        } catch (e) {
-            await msg.reply('❌ Erro ao remover membro.');
         }
     }
 

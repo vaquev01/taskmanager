@@ -11,3 +11,6 @@ coverage/
 *.db-journal
 Database/.env.bak
 Backend/.env
+Backend/test-api.sh
+Backend/debug-*.ts
+/tmp/

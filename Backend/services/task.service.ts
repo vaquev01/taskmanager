@@ -44,6 +44,7 @@ export class TaskService {
                     { responsavel_id: userId },
                     { criador_id: userId },
                 ],
+                status: { not: TaskStatus.CONCLUIDA },
             },
             orderBy: {
                 prazo: 'asc', // Soonest deadline first

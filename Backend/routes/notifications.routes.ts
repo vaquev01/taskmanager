@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import webpush from 'web-push';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 
-// Configure Web Push with VAPID keys (Should be in ENV, but using generated ones for now)
-const publicVapidKey = 'BJmCsWmcExysXP0fCDSFO4zpqr_BN3HrcGpIU8OPU5LNqzugsuCDGFbnHmBHdlJpy9meXDsykhvR7QabwNoCXbs';
-const privateVapidKey = 'PSVuNybuLr0JyTpLhOaut3sov3pVyqtLSQ89GqEAgLs';
+// Configure Web Push with VAPID keys
+const publicVapidKey = process.env.VAPID_PUBLIC_KEY || 'BJmCsWmcExysXP0fCDSFO4zpqr_BN3HrcGpIU8OPU5LNqzugsuCDGFbnHmBHdlJpy9meXDsykhvR7QabwNoCXbs';
+const privateVapidKey = process.env.VAPID_PRIVATE_KEY || 'PSVuNybuLr0JyTpLhOaut3sov3pVyqtLSQ89GqEAgLs';
 
 webpush.setVapidDetails(
     'mailto:support@taskflow.com',
@@ -16,43 +17,50 @@ webpush.setVapidDetails(
 
 router.use(authMiddleware);
 
-// Store subscriptions in memory for now (MVP). Ideally in DB (User model).
-// Map<userId, Subscription[]>
-const subscriptions: Map<string, any[]> = new Map();
-
-router.post('/subscribe', (req, res) => {
+router.post('/subscribe', async (req, res) => {
     const subscription = req.body;
     const userId = req.user?.id;
 
-    if (!userId || !subscription) {
+    if (!userId || !subscription?.endpoint || !subscription?.keys) {
         return res.status(400).json({ error: 'Invalid subscription' });
     }
 
-    const userSubs = subscriptions.get(userId) || [];
-    userSubs.push(subscription);
-    subscriptions.set(userId, userSubs);
-
-    console.log(`🔔 User ${userId} subscribed to notifications.`);
-    res.status(201).json({});
+    try {
+        await prisma.pushSubscription.upsert({
+            where: { endpoint: subscription.endpoint },
+            update: { user_id: userId, keys_p256dh: subscription.keys.p256dh, keys_auth: subscription.keys.auth },
+            create: { user_id: userId, endpoint: subscription.endpoint, keys_p256dh: subscription.keys.p256dh, keys_auth: subscription.keys.auth },
+        });
+        console.log(`🔔 User ${userId} subscribed to notifications.`);
+        res.status(201).json({});
+    } catch (error) {
+        console.error('Subscribe error:', error);
+        res.status(500).json({ error: 'Failed to save subscription' });
+    }
 });
 
 router.post('/test', async (req, res) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({});
 
-    const userSubs = subscriptions.get(userId) || [];
-
-    if (userSubs.length === 0) {
-        return res.status(404).json({ error: 'No subscription found' });
-    }
-
-    const payload = JSON.stringify({
-        title: 'TaskFlow Test',
-        body: 'This is a test notification from TaskFlow! 🚀'
-    });
-
     try {
-        await Promise.all(userSubs.map(sub => webpush.sendNotification(sub, payload)));
+        const subs = await prisma.pushSubscription.findMany({ where: { user_id: userId } });
+
+        if (subs.length === 0) {
+            return res.status(404).json({ error: 'No subscription found' });
+        }
+
+        const payload = JSON.stringify({
+            title: 'TaskFlow Test',
+            body: 'This is a test notification from TaskFlow! 🚀'
+        });
+
+        await Promise.all(subs.map(sub =>
+            webpush.sendNotification(
+                { endpoint: sub.endpoint, keys: { p256dh: sub.keys_p256dh, auth: sub.keys_auth } },
+                payload
+            )
+        ));
         res.json({ success: true });
     } catch (error) {
         console.error('Push error:', error);
@@ -62,13 +70,20 @@ router.post('/test', async (req, res) => {
 
 // Helper to send notification to a specific user (exported for other services)
 export const sendNotification = async (userId: string, title: string, body: string) => {
-    const userSubs = subscriptions.get(userId) || [];
-    if (userSubs.length === 0) return;
+    try {
+        const subs = await prisma.pushSubscription.findMany({ where: { user_id: userId } });
+        if (subs.length === 0) return;
 
-    const payload = JSON.stringify({ title, body });
-    userSubs.forEach(sub => {
-        webpush.sendNotification(sub, payload).catch(e => console.error(e));
-    });
+        const payload = JSON.stringify({ title, body });
+        await Promise.all(subs.map(sub =>
+            webpush.sendNotification(
+                { endpoint: sub.endpoint, keys: { p256dh: sub.keys_p256dh, auth: sub.keys_auth } },
+                payload
+            ).catch(e => console.error(e))
+        ));
+    } catch (error) {
+        console.error('sendNotification error:', error);
+    }
 };
 
 export default router;

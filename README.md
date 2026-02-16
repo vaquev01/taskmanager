@@ -24,9 +24,9 @@
 | **State** | Zustand (persist) + React Query |
 | **DnD** | @dnd-kit/core + sortable |
 | **Backend** | Express + TypeScript |
-| **Database** | SQLite + Prisma ORM |
+| **Database** | PostgreSQL + Prisma ORM |
 | **WhatsApp** | whatsapp-web.js |
-| **AI** | Google Gemini API |
+| **AI** | OpenAI GPT-4o-mini + Whisper |
 | **Audio** | ffmpeg (transcription) |
 
 ## 🚀 Setup Rápido
@@ -42,18 +42,24 @@ git clone https://github.com/vaquev01/taskmanager.git
 cd taskmanager
 ```
 
-### 2. Backend
+### 2. Database (PostgreSQL via Docker)
+
+```bash
+docker compose up -d db   # Inicia PostgreSQL na porta 5432
+```
+
+### 3. Backend
 
 ```bash
 cd Backend
 cp .env.example .env  # Edite com suas chaves
 npm install
-npx prisma generate
-npx prisma db push
+cd ../Database && npx prisma generate && npx prisma db push
+cd ../Backend
 npm run dev
 ```
 
-### 3. Frontend
+### 4. Frontend
 
 ```bash
 cd Frontend
@@ -61,7 +67,7 @@ npm install
 npm run dev
 ```
 
-### 4. Acessar
+### 5. Acessar
 Abra http://localhost:5173 no browser.
 
 ## ⚙️ Variáveis de Ambiente
@@ -70,30 +76,35 @@ Veja `.env.example` no diretório Backend para todas as variáveis necessárias.
 
 | Variável | Descrição |
 |----------|-----------|
-| `DATABASE_URL` | URL do banco SQLite |
-| `GEMINI_API_KEY` | Chave da API Google Gemini |
+| `DATABASE_URL` | URL do banco PostgreSQL |
+| `JWT_SECRET` | Chave secreta para tokens JWT |
+| `OPENAI_API_KEY` | Chave da API OpenAI (GPT + Whisper) |
+| `CORS_ORIGINS` | Origins permitidas (separadas por vírgula) |
 | `PORT` | Porta do servidor (default: 4000) |
 
 ## 📁 Estrutura
 
 ```
 ├── Backend/
-│   ├── src/
-│   │   ├── routes/       # Rotas da API
-│   │   ├── services/     # Lógica de negócio
-│   │   └── index.ts      # Entry point
-│   ├── prisma/
-│   │   └── schema.prisma # Schema do banco
+│   ├── routes/           # Rotas da API (REST)
+│   ├── services/         # Lógica de negócio (WhatsApp, Cron, Tasks)
+│   ├── middleware/       # Auth JWT, Admin, Validation, Error
+│   ├── schemas/          # Zod validation schemas
+│   ├── lib/              # Prisma client, sanitize helpers
+│   ├── server.ts         # Entry point Express
 │   └── .env.example
+├── Database/
+│   └── schema.prisma     # Schema do banco (PostgreSQL)
 ├── Frontend/
 │   ├── src/
 │   │   ├── components/   # UI Components
 │   │   ├── pages/        # Page views
-│   │   ├── store/        # Zustand stores
+│   │   ├── store/        # Zustand stores (persist)
 │   │   ├── types/        # TypeScript interfaces
-│   │   ├── lib/          # API client
+│   │   ├── lib/          # API client (axios + interceptors)
 │   │   └── App.tsx       # Router + ErrorBoundary
 │   └── index.html
+├── docker-compose.yml    # PostgreSQL + Backend + Frontend
 └── README.md
 ```
 

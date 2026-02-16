@@ -5,11 +5,20 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import rateLimit from 'express-rate-limit';
 import apiRoutes from './routes';
 import adminRoutes from './routes/admin.routes';
+import authRoutes from './routes/auth.routes';
+import analyticsRoutes from './routes/analytics.routes';
+import searchRoutes from './routes/search.routes';
+import notificationsRoutes from './routes/notifications.routes';
+import reportsRoutes from './routes/reports.routes';
 import { WhatsappService } from './services/whatsapp.service';
 import { whatsappRouter } from './routes/whatsapp.routes';
 import { CronService } from './services/cron.service';
+import { errorHandler } from './middleware/error.middleware';
+import { prisma } from './lib/prisma';
+import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
@@ -17,20 +26,10 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // Middleware
-import rateLimit from 'express-rate-limit';
-import authRoutes from './routes/auth.routes';
-import analyticsRoutes from './routes/analytics.routes';
-import searchRoutes from './routes/search.routes';
-import notificationsRoutes from './routes/notifications.routes';
-import reportsRoutes from './routes/reports.routes';
-import { errorHandler } from './middleware/error.middleware';
-
-// ... (imports)
-
-// Middleware
-app.set('trust proxy', 1); // Trust proxy for rate limiter behind load balancers (Railway)
+app.set('trust proxy', 1);
 app.use(helmet());
-app.use(cors());
+const corsOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) || ['http://localhost:5173'];
+app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(morgan('dev'));
 app.use(express.json());
 
@@ -106,10 +105,6 @@ if (fs.existsSync(finalPublicPath)) {
     console.log('⚠️ Static frontend not found. API Mode only.');
 }
 
-import { prisma } from './lib/prisma';
-
-import bcrypt from 'bcryptjs';
-
 async function ensureAdminUser() {
     try {
         const adminEmail = 'admin@wardogs.com';
@@ -143,13 +138,16 @@ async function ensureAdminUser() {
             });
             console.log(`✅ Super Admin created. Login: ${adminEmail} / Pass: ${defaultPassword}`);
         } else {
-            // FORCE UPDATE password on every startup to ensure access
-            console.log('🔄 Admin exists. Forcing password update to ensure access...');
-            await prisma.user.update({
-                where: { id: admin.id },
-                data: { password_hash: hash }
-            });
-            console.log(`✅ Admin password RESET. Login: ${adminEmail} / Pass: ${defaultPassword}`);
+            // Only set password if user has no password configured
+            if (!admin.password_hash) {
+                await prisma.user.update({
+                    where: { id: admin.id },
+                    data: { password_hash: hash }
+                });
+                console.log('✅ Admin password initialized (was empty).');
+            } else {
+                console.log('✅ Super Admin already exists with password configured.');
+            }
         }
     } catch (error) {
         console.error('❌ Error ensuring admin user:', error);
@@ -157,12 +155,11 @@ async function ensureAdminUser() {
 }
 
 // Start Server
-app.listen(Number(PORT), '0.0.0.0', async () => {
+const server = app.listen(Number(PORT), '0.0.0.0', async () => {
     console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
 
-    // Start Services after server is listening
     try {
-        await ensureAdminUser(); // Ensure Admin exists
+        await ensureAdminUser();
         await whatsappService.initialize();
         cronService.start();
         console.log('✅ All services started successfully');
@@ -170,3 +167,20 @@ app.listen(Number(PORT), '0.0.0.0', async () => {
         console.error('❌ Error starting services:', error);
     }
 });
+
+// Graceful Shutdown
+const gracefulShutdown = async (signal: string) => {
+    console.log(`\n🛑 ${signal} received. Shutting down gracefully...`);
+    server.close(async () => {
+        await prisma.$disconnect();
+        console.log('✅ Database disconnected. Process exiting.');
+        process.exit(0);
+    });
+    setTimeout(() => {
+        console.error('⚠️ Forced shutdown after timeout.');
+        process.exit(1);
+    }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
