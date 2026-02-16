@@ -281,6 +281,31 @@ export class WhatsappService {
         }
     }
 
+    // ── Hierarchy Helpers ──────────────────────────────────────────────
+    private static ROLE_LEVEL: Record<string, number> = {
+        'USER': 0,
+        'ADMIN': 1,
+        'SUPER_ADMIN': 2
+    };
+
+    private async getSenderUser(msg: Message) {
+        const contact = await msg.getContact();
+        return prisma.user.findUnique({ where: { telefone_whatsapp: contact.number } });
+    }
+
+    private hasRole(user: { role: string }, minRole: 'USER' | 'ADMIN' | 'SUPER_ADMIN'): boolean {
+        return (WhatsappService.ROLE_LEVEL[user.role] ?? 0) >= (WhatsappService.ROLE_LEVEL[minRole] ?? 0);
+    }
+
+    private async requireRole(msg: Message, user: any, minRole: 'ADMIN' | 'SUPER_ADMIN'): Promise<boolean> {
+        if (!this.hasRole(user, minRole)) {
+            const roleLabel = minRole === 'SUPER_ADMIN' ? 'Super Admin' : 'Admin';
+            await msg.reply(`🔒 Permissão negada. Este comando requer nível *${roleLabel}* ou superior.\nSeu nível atual: *${user.role}*`);
+            return false;
+        }
+        return true;
+    }
+
     public async sendMessage(to: string, message: string) {
         if (!this.isReady) return;
         try {
@@ -672,19 +697,47 @@ export class WhatsappService {
             return;
         }
         if (lower.startsWith('add membro') || lower.startsWith('novo membro')) {
-            await this.addMember(msg, text);
+            await this.addMember(msg, user, text);
             return;
         }
         if (lower.startsWith('rm membro') || lower.startsWith('remover membro')) {
-            await this.removeMember(msg, text);
+            await this.removeMember(msg, user, text);
             return;
         }
         if (lower.startsWith('criar equipe') || lower.startsWith('nova equipe')) {
-            await this.createTeamCommand(msg, text);
+            await this.createTeamCommand(msg, user, text);
             return;
         }
         if (lower.startsWith('mover membro') || lower.startsWith('mover ')) {
-            await this.moveMemberCommand(msg, text);
+            await this.moveMemberCommand(msg, user, text);
+            return;
+        }
+        if (lower.startsWith('deletar equipe') || lower.startsWith('excluir equipe')) {
+            await this.deleteTeamCommand(msg, user, text);
+            return;
+        }
+        if (lower.startsWith('excluir usuario') || lower.startsWith('excluir usuário') || lower.startsWith('deletar usuario') || lower.startsWith('deletar usuário')) {
+            await this.deleteUserCommand(msg, user, text);
+            return;
+        }
+        if (lower.startsWith('promover ')) {
+            await this.promoteCommand(msg, user, text, 'promote');
+            return;
+        }
+        if (lower.startsWith('rebaixar ')) {
+            await this.promoteCommand(msg, user, text, 'demote');
+            return;
+        }
+        if (lower.startsWith('tarefa para ') || lower.startsWith('task para ')) {
+            await this.assignTaskCommand(msg, user, text);
+            return;
+        }
+        if (lower.startsWith('tarefas da equipe') || lower.startsWith('tarefas do time')) {
+            await this.teamTasksCommand(msg, user, text);
+            return;
+        }
+        if (lower.startsWith('remover da equipe') || lower.startsWith('tirar da equipe')) {
+            await this.removeFromTeamCommand(msg, user, text);
             return;
         }
 
@@ -887,39 +940,62 @@ IMPORTANTE:
             orderBy: { nome: 'asc' }
         });
         const allUsers = await prisma.user.findMany({ orderBy: { nome: 'asc' } });
+        const sender = await this.getSenderUser(msg);
+        const isAdmin = sender && this.hasRole(sender, 'ADMIN');
 
-        let response = `👥 * Equipe(${allUsers.length} membros) *\n`;
+        const roleIcon = (r: string) => r === 'SUPER_ADMIN' ? '👑' : r === 'ADMIN' ? '⭐' : '👤';
+
+        let response = `👥 *Equipe (${allUsers.length} membros)*\n`;
 
         if (teams.length > 0) {
-            // Group by team
             const teamUserIds = new Set<string>();
             for (const team of teams) {
                 const members = team.members.map((m: any) => m.user).filter(Boolean);
-                response += `\n🏢 * ${team.nome}* (${members.length}): \n`;
+                response += `\n🏢 *${team.nome}* (${members.length}):\n`;
                 members.forEach((u: any) => {
-                    response += `   • ${u.nome} — 📞 ${u.telefone_whatsapp} \n`;
+                    response += `   ${roleIcon(u.role)} ${u.nome} — 📞 ${u.telefone_whatsapp}\n`;
                     teamUserIds.add(u.id);
                 });
             }
 
-            // Users without team
             const unassigned = allUsers.filter(u => !teamUserIds.has(u.id));
             if (unassigned.length > 0) {
-                response += `\n📋 * Sem Equipe * (${unassigned.length}): \n`;
+                response += `\n📋 *Sem Equipe* (${unassigned.length}):\n`;
                 unassigned.forEach(u => {
-                    response += `   • ${u.nome} — 📞 ${u.telefone_whatsapp} \n`;
+                    response += `   ${roleIcon(u.role)} ${u.nome} — 📞 ${u.telefone_whatsapp}\n`;
                 });
             }
         } else {
-            response += allUsers.map((u, i) => `${i + 1}. * ${u.nome}*\n   📞 ${u.telefone_whatsapp} `).join('\n\n');
+            response += allUsers.map((u, i) => `${i + 1}. ${roleIcon(u.role)} *${u.nome}* (${u.role})\n   📞 ${u.telefone_whatsapp}`).join('\n\n');
         }
 
-        response += `\n\n👇 * Comandos de Gestão:*\n - "add membro Nome, 5511999, equipe X"\n - "rm membro Nome"\n - "criar equipe NomeDaEquipe"\n - "mover membro Nome para equipe X"`;
+        response += `\n\n� = Super Admin | ⭐ = Admin | 👤 = User`;
+
+        if (isAdmin) {
+            response += `\n\n🔧 *Comandos de Gestão (Admin+):*`;
+            response += `\n• "criar equipe NomeDaEquipe"`;
+            response += `\n• "add membro Nome, 5511999, equipe X"`;
+            response += `\n• "mover membro Nome para equipe X"`;
+            response += `\n• "remover da equipe Nome da equipe X"`;
+            response += `\n• "rm membro Nome" (remove do sistema)`;
+            response += `\n• "deletar equipe NomeDaEquipe"`;
+            response += `\n• "tarefa para Nome: descrição da tarefa"`;
+            response += `\n• "tarefas da equipe NomeDaEquipe"`;
+        }
+
+        if (sender && this.hasRole(sender, 'SUPER_ADMIN')) {
+            response += `\n\n🔐 *Comandos Super Admin:*`;
+            response += `\n• "promover Nome" (USER→ADMIN→SUPER_ADMIN)`;
+            response += `\n• "rebaixar Nome" (SUPER_ADMIN→ADMIN→USER)`;
+            response += `\n• "excluir usuário Nome"`;
+        }
 
         await msg.reply(response);
     }
 
-    private async addMember(msg: Message, text: string) {
+    private async addMember(msg: Message, sender: any, text: string) {
+        if (!await this.requireRole(msg, sender, 'ADMIN')) return;
+
         const content = text.replace(/^(add|novo) membro\s+/i, '').trim();
         const parts = content.split(',').map(p => p.trim());
 
@@ -927,7 +1003,6 @@ IMPORTANTE:
             return msg.reply('❌ Formato inválido.\nUse: *add membro Nome, 5511999999999*\nOu: *add membro Nome, 5511999999999, equipe NomeDaEquipe*');
         }
 
-        // Check if last part is a team assignment
         let teamName: string | null = null;
         if (parts.length >= 3 && parts[parts.length - 1].toLowerCase().startsWith('equipe ')) {
             teamName = parts.pop()!.replace(/^equipe\s+/i, '').trim();
@@ -943,32 +1018,29 @@ IMPORTANTE:
 
         try {
             const newUser = await prisma.user.create({
-                data: {
-                    nome: name,
-                    telefone_whatsapp: cleanPhone
-                }
+                data: { nome: name, telefone_whatsapp: cleanPhone }
             });
 
             let teamMsg = '';
             if (teamName) {
                 const team = await prisma.team.findFirst({ where: { nome: { contains: teamName, mode: 'insensitive' } } });
                 if (team) {
-                    await prisma.teamMember.create({
-                        data: { team_id: team.id, user_id: newUser.id }
-                    });
-                    teamMsg = ` na equipe * ${team.nome}* `;
+                    await prisma.teamMember.create({ data: { team_id: team.id, user_id: newUser.id } });
+                    teamMsg = ` na equipe *${team.nome}*`;
                 } else {
                     teamMsg = ' (⚠️ equipe não encontrada)';
                 }
             }
 
-            await msg.reply(`✅ Membro * ${name}* adicionado${teamMsg} !`);
+            await msg.reply(`✅ Membro *${name}* adicionado${teamMsg}!`);
         } catch (e) {
             await msg.reply('❌ Erro: Telefone já cadastrado ou inválido.');
         }
     }
 
-    private async createTeamCommand(msg: Message, text: string) {
+    private async createTeamCommand(msg: Message, sender: any, text: string) {
+        if (!await this.requireRole(msg, sender, 'ADMIN')) return;
+
         const teamName = text.replace(/^(criar|nova) equipe\s+/i, '').trim();
         if (!teamName) {
             return msg.reply('❌ Formato: *criar equipe NomeDaEquipe*');
@@ -980,36 +1052,19 @@ IMPORTANTE:
                 return msg.reply(`⚠️ Equipe "${teamName}" já existe!`);
             }
 
-            // Fix: Need an admin to create a team.
-            const contact = await msg.getContact();
-            const senderNumber = contact.number;
-
-            let adminUser = await prisma.user.findUnique({ where: { telefone_whatsapp: senderNumber } });
-
-            if (!adminUser) {
-                // Fallback: Try to find any admin
-                adminUser = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
-            }
-
-            if (!adminUser) {
-                return msg.reply('❌ Você precisa estar cadastrado ou haver um admin no sistema para criar equipes.');
-            }
-
             await prisma.team.create({
-                data: {
-                    nome: teamName,
-                    admin_id: adminUser.id
-                }
+                data: { nome: teamName, admin_id: sender.id }
             });
-            await msg.reply(`✅ Equipe * ${teamName}* criada!\nAdmin: ${adminUser.nome} \n\nPara adicionar membros: \n"add membro Nome, Tel, equipe ${teamName}"`);
+            await msg.reply(`✅ Equipe *${teamName}* criada!\nAdmin: ${sender.nome}\n\nPara adicionar membros:\n"add membro Nome, Tel, equipe ${teamName}"`);
         } catch (e) {
             console.error(e);
             await msg.reply('❌ Erro ao criar equipe.');
         }
     }
 
-    private async moveMemberCommand(msg: Message, text: string) {
-        // Formats: "mover membro João para equipe Marketing" or "mover João para Marketing"
+    private async moveMemberCommand(msg: Message, sender: any, text: string) {
+        if (!await this.requireRole(msg, sender, 'ADMIN')) return;
+
         const match = text.match(/^mover\s+(?:membro\s+)?(.+?)\s+para\s+(?:equipe\s+)?(.+)$/i);
         if (!match) {
             return msg.reply('❌ Formato: *mover membro Nome para equipe NomeDaEquipe*');
@@ -1018,39 +1073,31 @@ IMPORTANTE:
         const [, memberName, teamName] = match;
 
         try {
-            const user = await prisma.user.findFirst({
+            const targetUser = await prisma.user.findFirst({
                 where: { nome: { contains: memberName.trim(), mode: 'insensitive' } }
             });
-
-            if (!user) {
-                return msg.reply(`❌ Membro "${memberName}" não encontrado.`);
-            }
+            if (!targetUser) return msg.reply(`❌ Membro "${memberName}" não encontrado.`);
 
             const team = await prisma.team.findFirst({
                 where: { nome: { contains: teamName.trim(), mode: 'insensitive' } }
             });
+            if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
 
-            if (!team) {
-                return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
-            }
+            await prisma.teamMember.deleteMany({ where: { user_id: targetUser.id } });
+            await prisma.teamMember.create({ data: { team_id: team.id, user_id: targetUser.id } });
 
-            // Remove from all teams first
-            await prisma.teamMember.deleteMany({ where: { user_id: user.id } });
-            // Add to target team
-            await prisma.teamMember.create({
-                data: { team_id: team.id, user_id: user.id }
-            });
-
-            await msg.reply(`✅ * ${user.nome}* movido para equipe * ${team.nome}* !`);
+            await msg.reply(`✅ *${targetUser.nome}* movido para equipe *${team.nome}*!`);
         } catch (e) {
             await msg.reply('❌ Erro ao mover membro.');
         }
     }
 
-    private async removeMember(msg: Message, text: string) {
+    private async removeMember(msg: Message, sender: any, text: string) {
+        if (!await this.requireRole(msg, sender, 'ADMIN')) return;
+
         const term = text.replace(/^(rm|remover) membro\s+/i, '').trim();
 
-        const user = await prisma.user.findFirst({
+        const targetUser = await prisma.user.findFirst({
             where: {
                 OR: [
                     { telefone_whatsapp: { contains: term } },
@@ -1059,14 +1106,239 @@ IMPORTANTE:
             }
         });
 
-        if (!user) return msg.reply('❌ Usuário não encontrado.');
+        if (!targetUser) return msg.reply('❌ Usuário não encontrado.');
+
+        // Prevent removing someone with higher role
+        if ((WhatsappService.ROLE_LEVEL[targetUser.role] ?? 0) >= (WhatsappService.ROLE_LEVEL[sender.role] ?? 0)) {
+            return msg.reply(`🔒 Você não pode remover *${targetUser.nome}* (${targetUser.role}). Nível igual ou superior ao seu.`);
+        }
 
         try {
-            await prisma.user.delete({ where: { id: user.id } });
-            await msg.reply(`🗑️ Membro * ${user.nome}* removido.`);
+            // Remove from all teams + delete user
+            await prisma.teamMember.deleteMany({ where: { user_id: targetUser.id } });
+            await prisma.user.delete({ where: { id: targetUser.id } });
+            await msg.reply(`🗑️ Membro *${targetUser.nome}* removido do sistema.`);
         } catch (e) {
             await msg.reply('❌ Não foi possível remover. O usuário pode ter tarefas vinculadas.');
         }
+    }
+
+    // ── New Commands ─────────────────────────────────────────────────
+
+    private async removeFromTeamCommand(msg: Message, sender: any, text: string) {
+        if (!await this.requireRole(msg, sender, 'ADMIN')) return;
+
+        // "remover da equipe João da equipe Marketing" or "tirar da equipe João da equipe Marketing"
+        const match = text.match(/^(?:remover|tirar) da equipe\s+(.+?)\s+(?:da equipe|de)\s+(.+)$/i);
+        if (!match) {
+            return msg.reply('❌ Formato: *remover da equipe Nome da equipe NomeDaEquipe*');
+        }
+
+        const [, memberName, teamName] = match;
+
+        try {
+            const targetUser = await prisma.user.findFirst({
+                where: { nome: { contains: memberName.trim(), mode: 'insensitive' } }
+            });
+            if (!targetUser) return msg.reply(`❌ Membro "${memberName}" não encontrado.`);
+
+            const team = await prisma.team.findFirst({
+                where: { nome: { contains: teamName.trim(), mode: 'insensitive' } }
+            });
+            if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
+
+            const deleted = await prisma.teamMember.deleteMany({
+                where: { user_id: targetUser.id, team_id: team.id }
+            });
+
+            if (deleted.count === 0) {
+                return msg.reply(`⚠️ *${targetUser.nome}* não é membro da equipe *${team.nome}*.`);
+            }
+
+            await msg.reply(`✅ *${targetUser.nome}* removido da equipe *${team.nome}*. (Continua cadastrado no sistema)`);
+        } catch (e) {
+            await msg.reply('❌ Erro ao remover da equipe.');
+        }
+    }
+
+    private async deleteTeamCommand(msg: Message, sender: any, text: string) {
+        if (!await this.requireRole(msg, sender, 'ADMIN')) return;
+
+        const teamName = text.replace(/^(deletar|excluir) equipe\s+/i, '').trim();
+        if (!teamName) return msg.reply('❌ Formato: *deletar equipe NomeDaEquipe*');
+
+        try {
+            const team = await prisma.team.findFirst({
+                where: { nome: { contains: teamName, mode: 'insensitive' } },
+                include: { members: true }
+            });
+            if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
+
+            await prisma.teamMember.deleteMany({ where: { team_id: team.id } });
+            await prisma.team.delete({ where: { id: team.id } });
+
+            await msg.reply(`🗑️ Equipe *${team.nome}* deletada! (${team.members.length} membros ficaram sem equipe)`);
+        } catch (e) {
+            await msg.reply('❌ Erro ao deletar equipe.');
+        }
+    }
+
+    private async deleteUserCommand(msg: Message, sender: any, text: string) {
+        if (!await this.requireRole(msg, sender, 'SUPER_ADMIN')) return;
+
+        const term = text.replace(/^(excluir|deletar) usu[aá]rio\s+/i, '').trim();
+        if (!term) return msg.reply('❌ Formato: *excluir usuário Nome*');
+
+        const targetUser = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { telefone_whatsapp: { contains: term } },
+                    { nome: { contains: term, mode: 'insensitive' } }
+                ]
+            }
+        });
+
+        if (!targetUser) return msg.reply('❌ Usuário não encontrado.');
+        if (targetUser.id === sender.id) return msg.reply('❌ Você não pode excluir a si mesmo.');
+
+        try {
+            await prisma.teamMember.deleteMany({ where: { user_id: targetUser.id } });
+            await prisma.user.delete({ where: { id: targetUser.id } });
+            await msg.reply(`🗑️ Usuário *${targetUser.nome}* (${targetUser.role}) excluído permanentemente.`);
+        } catch (e) {
+            await msg.reply('❌ Não foi possível excluir. O usuário pode ter tarefas/comentários vinculados.');
+        }
+    }
+
+    private async promoteCommand(msg: Message, sender: any, text: string, action: 'promote' | 'demote') {
+        if (!await this.requireRole(msg, sender, 'SUPER_ADMIN')) return;
+
+        const name = text.replace(/^(promover|rebaixar)\s+/i, '').trim();
+        if (!name) return msg.reply(`❌ Formato: *${action === 'promote' ? 'promover' : 'rebaixar'} Nome*`);
+
+        const targetUser = await prisma.user.findFirst({
+            where: { nome: { contains: name, mode: 'insensitive' } }
+        });
+        if (!targetUser) return msg.reply(`❌ Usuário "${name}" não encontrado.`);
+
+        const levels = ['USER', 'ADMIN', 'SUPER_ADMIN'];
+        const currentIdx = levels.indexOf(targetUser.role);
+        const newIdx = action === 'promote' ? currentIdx + 1 : currentIdx - 1;
+
+        if (newIdx < 0 || newIdx >= levels.length) {
+            const limit = action === 'promote' ? 'máximo (SUPER_ADMIN)' : 'mínimo (USER)';
+            return msg.reply(`⚠️ *${targetUser.nome}* já está no nível ${limit}.`);
+        }
+
+        const newRole = levels[newIdx];
+        await prisma.user.update({
+            where: { id: targetUser.id },
+            data: { role: newRole as any }
+        });
+
+        const arrow = action === 'promote' ? '⬆️' : '⬇️';
+        await msg.reply(`${arrow} *${targetUser.nome}* alterado: ${targetUser.role} → *${newRole}*`);
+    }
+
+    private async assignTaskCommand(msg: Message, sender: any, text: string) {
+        if (!await this.requireRole(msg, sender, 'ADMIN')) return;
+
+        // Formats:
+        // "tarefa para João: Fazer relatório até amanhã"
+        // "tarefa para equipe Marketing: Revisar campanha"
+        const match = text.match(/^(?:tarefa|task) para\s+(.+?):\s+(.+)$/i);
+        if (!match) {
+            return msg.reply('❌ Formato:\n• *tarefa para Nome: descrição*\n• *tarefa para equipe NomeDaEquipe: descrição*');
+        }
+
+        const [, target, description] = match;
+        const isTeamTarget = target.toLowerCase().startsWith('equipe ') || target.toLowerCase().startsWith('time ');
+
+        if (isTeamTarget) {
+            const teamName = target.replace(/^(equipe|time)\s+/i, '').trim();
+            const team = await prisma.team.findFirst({
+                where: { nome: { contains: teamName, mode: 'insensitive' } },
+                include: { members: { include: { user: true } } }
+            });
+
+            if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
+            if (team.members.length === 0) return msg.reply(`⚠️ Equipe *${team.nome}* não tem membros.`);
+
+            let created = 0;
+            for (const member of team.members) {
+                if (!member.user) continue;
+                await this.taskService.createTask({
+                    titulo: description.trim(),
+                    descricao: `Tarefa atribuída via WhatsApp por ${sender.nome} para equipe ${team.nome}`,
+                    criador_id: sender.id,
+                    responsavel_id: member.user_id,
+                    prioridade: TaskPriority.MEDIA,
+                    isRecurring: false,
+                    recurrenceInterval: undefined
+                });
+                created++;
+            }
+
+            await msg.reply(`✅ Tarefa criada para *${created} membros* da equipe *${team.nome}*:\n📝 *${description.trim()}*`);
+        } else {
+            const targetUser = await prisma.user.findFirst({
+                where: { nome: { contains: target.trim(), mode: 'insensitive' } }
+            });
+
+            if (!targetUser) return msg.reply(`❌ Usuário "${target}" não encontrado.`);
+
+            const newTask = await this.taskService.createTask({
+                titulo: description.trim(),
+                descricao: `Tarefa atribuída via WhatsApp por ${sender.nome}`,
+                criador_id: sender.id,
+                responsavel_id: targetUser.id,
+                prioridade: TaskPriority.MEDIA,
+                isRecurring: false,
+                recurrenceInterval: undefined
+            });
+
+            await msg.reply(`✅ Tarefa atribuída a *${targetUser.nome}*:\n📝 *${newTask.titulo}*`);
+        }
+    }
+
+    private async teamTasksCommand(msg: Message, sender: any, text: string) {
+        if (!await this.requireRole(msg, sender, 'ADMIN')) return;
+
+        const teamName = text.replace(/^tarefas (da equipe|do time)\s+/i, '').trim();
+        if (!teamName) return msg.reply('❌ Formato: *tarefas da equipe NomeDaEquipe*');
+
+        const team = await prisma.team.findFirst({
+            where: { nome: { contains: teamName, mode: 'insensitive' } },
+            include: { members: { include: { user: true } } }
+        });
+
+        if (!team) return msg.reply(`❌ Equipe "${teamName}" não encontrada.`);
+
+        const memberIds = team.members.map(m => m.user_id);
+        if (memberIds.length === 0) return msg.reply(`⚠️ Equipe *${team.nome}* não tem membros.`);
+
+        const tasks = await prisma.task.findMany({
+            where: {
+                responsavel_id: { in: memberIds },
+                status: { not: 'CONCLUIDA' }
+            },
+            include: { responsavel: { select: { nome: true } } },
+            orderBy: { prazo: 'asc' },
+            take: 30
+        });
+
+        if (tasks.length === 0) {
+            return msg.reply(`✨ Equipe *${team.nome}* não tem tarefas pendentes!`);
+        }
+
+        let response = `📋 *Tarefas da equipe ${team.nome}* (${tasks.length}):\n\n`;
+        tasks.forEach((t, i) => {
+            const prazo = t.prazo ? new Date(t.prazo).toLocaleDateString('pt-BR') : 'Sem data';
+            const prioridade = t.prioridade === 'ALTA' ? '🔴' : t.prioridade === 'MEDIA' ? '🟡' : '🟢';
+            response += `${i + 1}. ${prioridade} *${t.titulo}*\n   👤 ${(t as any).responsavel?.nome || '?'} | 📅 ${prazo}\n\n`;
+        });
+
+        await msg.reply(response.trim());
     }
 }
 
